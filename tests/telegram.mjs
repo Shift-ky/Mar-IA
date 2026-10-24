@@ -25,6 +25,7 @@ globalThis.fetch=async(url,init)=>{
  const u=String(url);assert(u.startsWith('https://api.telegram.org/'),'Only Telegram requests expected');
  if(u.includes('/file/bot'))return new Response(new TextEncoder().encode('%PDF-synthetic receipt'),{headers:{'Content-Type':'application/pdf'}});
  const data=JSON.parse(init.body);
+ if(u.endsWith('/getMe'))return Response.json({ok:true,result:{username:'synthetic_bot'}});
  if(u.endsWith('/getFile'))return Response.json({ok:true,result:{file_path:'documents/receipt.pdf',file_size:22}});
  assert(u.endsWith('/sendMessage'));sent.push(data);if(loseReply){loseReply=false;throw Error('lost acknowledgement')}
  return Response.json({ok:true,result:{message_id:sent.length}});
@@ -61,6 +62,10 @@ await deliver('vincular '+code);assert(sql.prepare("SELECT user FROM wa_links WH
 sql.prepare('INSERT INTO wa_links VALUES(?,?,?,?)').run('5585000000000','owner','owner@example.com','family');
 assert.equal((await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'unlink'})}))).status,200);
 assert(sql.prepare("SELECT user FROM wa_links WHERE phone='5585000000000'").get());assert(!sql.prepare("SELECT user FROM wa_links WHERE phone='tg:42'").get());
+assert.equal(commands.parseCommand('ver saldo').action,'balance');assert.equal(commands.parseCommand('a'.repeat(48)).action,'pair');
+const diagnosticBody=JSON.stringify({at:Date.now(),diagnostic:true});
+const diagnostic=await service.jobs(new Request('https://test.invalid/api/telegram/jobs',{method:'POST',body:diagnosticBody,headers:{'x-mar-job-signature':await signature(env.TELEGRAM_JOB_SECRET,diagnosticBody)}}),env,{waitUntil(){throw Error('Diagnostic must not send messages')}});
+assert.equal(diagnostic.status,200);assert.equal((await diagnostic.json()).username,'synthetic_bot');
 delete env.TELEGRAM_BOT_TOKEN;
 apiPair=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'pair'})}));assert.equal(apiPair.status,503);
 globalThis.qaUser=null;assert.equal((await api.GET(new Request('https://test.invalid/api/telegram?family=family'))).status,403);
