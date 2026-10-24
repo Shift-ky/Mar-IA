@@ -22,7 +22,7 @@ Configure uma tarefa no servidor a cada minuto para POST `/api/telegram/jobs`, c
 1. Entre na aplicação hospedada no servidor, complete o cadastro e selecione a família.
 2. Na aba Telegram, gere um código com validade de dez minutos. Envie `vincular CODIGO` ao bot, em conversa privada. `/start CODIGO` também funciona.
 3. Teste `despesa 32,50 supermercado`, `receita 1500 salario`, `/saldo`, `/movimentacoes` e `/relatorio 2026-10`. Confirme que aparecem na família correta.
-4. Envie JPEG, PNG ou PDF de até 10 MB. Sem extrator configurado, revise no aplicativo antes de confirmar. A extração automática mantém as mesmas exigências de conferência e validação fiscal.
+4. Envie JPEG, PNG ou PDF de até 10 MB. PDFs com texto (até dez páginas) têm leitura local do valor, sem enviar o documento a outro serviço. O valor aparece como sugestão: confira descrição, data e tipo antes de confirmar. Na aba Telegram, use “Ler PDF novamente” para documentos anteriores. Fotos e PDFs digitalizados precisam de um extrator/OCR configurado ou preenchimento manual. Valores ambíguos não são escolhidos automaticamente. A validação fiscal continua exigindo o provedor fiscal configurado.
 5. Desvincule a conta e confirme que novas consultas financeiras são recusadas. Conversas de grupos, canais e bots são ignoradas.
 
 As respostas não usam templates da Meta. O bot só envia respostas aos comandos recebidos e exige vínculo e permissões atuais. Entregas com confirmação incerta ficam para revisão, sem reenvio automático que possa duplicá-las.

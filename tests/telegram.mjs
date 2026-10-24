@@ -20,7 +20,7 @@ sql.prepare('INSERT INTO settings VALUES(?,?)').run('rev:family','0');
 const pairCode='a'.repeat(48),expires=new Date(Date.now()+600000).toISOString();
 sql.prepare('INSERT INTO wa_pairings VALUES(?,?,?,?,?)').run(await digest('telegram:'+pairCode),'owner','owner@example.com','family',expires);
 const sent=[];let loseReply=false;const objects=new Map();
-env.BUCKET={async put(k,v){objects.set(k,v)},async get(k){return {body:objects.get(k)}}};
+env.BUCKET={async put(k,v){objects.set(k,v)},async get(k){const bytes=objects.get(k);return bytes?{body:bytes,size:bytes.length,async arrayBuffer(){return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}}:null}};
 globalThis.fetch=async(url,init)=>{
  const u=String(url);assert(u.startsWith('https://api.telegram.org/'),'Only Telegram requests expected');
  if(u.includes('/file/bot'))return new Response(new TextEncoder().encode('%PDF-synthetic receipt'),{headers:{'Content-Type':'application/pdf'}});
@@ -55,6 +55,10 @@ assert.equal((await service.jobs(new Request('https://test.invalid/api/telegram/
 globalThis.qaEnv=env;globalThis.qaUser={userId:'owner',email:'owner@example.com'};
 await build({entryPoints:['app/api/telegram/route.ts'],bundle:true,platform:'node',format:'esm',outfile:'work/telegram-api.mjs',plugins:[{name:'test-auth',setup(b){b.onResolve({filter:/chatgpt-auth$/},()=>({path:'auth',namespace:'qa'}));b.onResolve({filter:/^cloudflare:workers$/},()=>({path:'env',namespace:'qa'}));b.onLoad({filter:/.*/,namespace:'qa'},({path})=>({contents:path==='auth'?'export async function getChatGPTUser(){return globalThis.qaUser;}':'export const env=globalThis.qaEnv;',loader:'js'}));}}]});
 const api=await import('../work/telegram-api.mjs');
+const recordCountBeforeExtraction=sql.prepare('SELECT count(*) n FROM records').get().n;
+const reextracted=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'reextract',documentId:doc.id})}));
+assert.equal(reextracted.status,200);assert.equal((await reextracted.json()).document.state,'needs_review');assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,recordCountBeforeExtraction);
+const wrongFamilyExtraction=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'other-family',action:'reextract',documentId:doc.id})}));assert.equal(wrongFamilyExtraction.status,403);
 const getResponse=await api.GET(new Request('https://test.invalid/api/telegram?family=family'));assert.equal(getResponse.status,200);assert.equal((await getResponse.json()).health.configured,true);
 let apiPair=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'pair'})}));assert.equal(apiPair.status,200);const code=(await apiPair.json()).code;
 assert(sql.prepare('SELECT hash FROM wa_pairings WHERE hash=?').get(await digest('telegram:'+code)));
