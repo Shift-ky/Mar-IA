@@ -153,3 +153,9 @@ O acesso da hospedagem continua privado. Antes de um familiar acessar a tela de 
 ## WhatsApp, estoque e falteiro
 
 Consulte [o guia de ativação](docs/WHATSAPP_ATIVACAO.md). O código do receptor HTTPS separado fica em `whatsapp-relay/`. O site financeiro mantém o acesso privado. A integração real aguarda registro/ativação do número na Meta, implantação do receptor e configuração segura dos segredos; nenhum token é incluído no código. A leitura fiscal automática depende de um provedor validado, não configurado nesta entrega. Sem esse provedor, fotos e PDFs ficam disponíveis para revisão manual.
+
+## Branding e cadastro por e-mail
+
+A identidade visual segue o painel Mar IA enviado pelo usuário, com Montserrat local, azul oceano/ciano/prata e ícones atualizados. Consulte `docs/BRANDING_MAR_IA.md`.
+
+O cadastro individual agora inclui telefone. A integração de e-mail/senha, confirmação e recuperação usa Supabase Auth no servidor. Está preparada e testada com provedor simulado, mas a ativação real aguarda a configuração de um projeto. O acesso atual e a audiência privada foram preservados. Consulte `docs/CADASTRO_EMAIL.md` para configurar sem colocar credenciais no código.

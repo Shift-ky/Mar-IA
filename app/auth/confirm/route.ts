@@ -1,0 +1,3 @@
+import {serverAuth} from '../../../lib/supabase/server';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){const url=new URL(request.url);const token_hash=url.searchParams.get('token_hash');const type=url.searchParams.get('type');let target='/entrar?erro=link';try{if(token_hash&&['email','signup','recovery'].includes(type||'')){const client=await serverAuth();if(client){const {error}=await client.auth.verifyOtp({token_hash,type:type as 'email'|'signup'|'recovery'});if(!error)target=type==='recovery'?'/nova-senha':'/';}}}catch{}return new Response(null,{status:303,headers:{Location:new URL(target,url.origin).href,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});}

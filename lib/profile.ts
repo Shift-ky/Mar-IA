@@ -1,0 +1,1 @@
+export function profileFields(input:any){const name=String(input?.name||'').trim();const digits=String(input?.phone||'').replace(/\D/g,'');if(name.length<2||name.length>100)throw Error('Informe seu nome, entre 2 e 100 caracteres.');if(!/^\d{10,15}$/.test(digits))throw Error('Informe um telefone com DDD e código do país, como +55 85 99999-9999.');return {name,phone:'+'+digits};}

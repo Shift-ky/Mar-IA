@@ -10,3 +10,4 @@ declare namespace Cloudflare {
   RECEIPT_EXTRACTOR_URL?:string; RECEIPT_EXTRACTOR_TOKEN?:string;
  }
 }
+declare namespace Cloudflare { interface Env {SUPABASE_URL?:string;SUPABASE_PUBLISHABLE_KEY?:string;MAR_ADMIN_EMAIL?:string;} }

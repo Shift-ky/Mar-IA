@@ -1,0 +1,3 @@
+import {serverAuth} from '../../../lib/supabase/server';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){const url=new URL(request.url);const code=url.searchParams.get('code');let target='/entrar?erro=link';try{const client=await serverAuth();if(code&&client){const {error}=await client.auth.exchangeCodeForSession(code);if(!error)target=url.searchParams.get('next')==='/nova-senha'?'/nova-senha':'/';}}catch{}return new Response(null,{status:303,headers:{Location:new URL(target,url.origin).href,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});}

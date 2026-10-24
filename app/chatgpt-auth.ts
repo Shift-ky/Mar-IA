@@ -1,3 +1,7 @@
+import {serverAuth,authConfigured} from '../lib/supabase/server';
+import {canonicalIdentity} from '../lib/supabase/identity';
+import {env} from 'cloudflare:workers';
+import {cookies} from 'next/headers';
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -6,6 +10,7 @@ export type ChatGPTUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  authMethod?: 'supabase'|'chatgpt';
 };
 
 const USER_ID_HEADER = "oai-authenticated-user-id";
@@ -19,6 +24,7 @@ const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
+  if(authConfigured()){const jar=await cookies();if(!jar.getAll().some(c=>c.name.startsWith('mar-supabase-auth')))return null;if(jar.getAll().some(c=>c.name.startsWith('mar-supabase-auth'))){try{const client=await serverAuth();const {data,error}=await client!.auth.getUser();if(error||!data.user)return null;return canonicalIdentity(env.DB!,data.user,env.SUPABASE_URL!,env.MAR_ADMIN_EMAIL!);}catch{return null;}}}
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
@@ -33,6 +39,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
 
   return {
     userId,
+    authMethod:'chatgpt',
     displayName: fullName ?? email,
     email,
     fullName,

@@ -1,35 +1,37 @@
-# Mar IA — código-fonte atualizado
+# Mar IA — Branding e cadastro individual
 
-Commit desta entrega: f6dc35e7ff6467480f1038bd623a286635349a7f
-
-Inclui cadastro individual, famílias/permissões, modo offline, sincronização, estoque, falteiro, histórico de preços, revisão de cupons e integração de servidor para WhatsApp.
+Código-fonte da versão publicada: 31f43e0ed00672c143877a84e4e33af8f0dc9be7.
 
 ## Enviar ao Git
 
-Extraia o ZIP. Na pasta mar-ia, para um repositório novo e vazio, substitua URL_DO_REPOSITORIO pela URL real:
+Extraia o ZIP. Para um repositório novo e vazio, abra a pasta mar-ia no terminal e substitua URL_DO_REPOSITORIO pela URL real:
 
 ```sh
 git init
 git add .
-git commit -m "Mar IA com WhatsApp estoque e falteiro"
+git commit -m "Mar IA com branding e cadastro por email"
 git branch -M main
 git remote add origin URL_DO_REPOSITORIO
 git push -u origin main
 ```
 
-Se já houver um repositório com histórico, clone-o primeiro, copie estes arquivos e revise as mudanças antes de fazer commit. Não use envio forçado para substituir um histórico existente.
+Se já houver um repositório, clone-o primeiro, copie estes arquivos e revise as alterações antes de fazer commit. O pacote não contém senhas, tokens privados, registros financeiros, comprovantes reais, dependências instaladas ou histórico .git.
 
-## Ativar o WhatsApp
+## Guias incluídos
 
-Leia `docs/WHATSAPP_ATIVACAO.md` antes de configurar serviços externos. O receptor HTTPS separado está em `whatsapp-relay/` e precisa ser implantado. Os segredos devem ser configurados no runtime do servidor, fora do Git. O exemplo `.env.example` contém apenas nomes e campos vazios.
+- `docs/BRANDING_MAR_IA.md`: paleta, tipografia, símbolos e aplicação da identidade.
+- `docs/CADASTRO_EMAIL.md`: configuração do Supabase Auth, confirmação de e-mail e recuperação de senha.
+- `docs/WHATSAPP_ATIVACAO.md`: configuração do WhatsApp, receptor separado e leitura de documentos.
 
-O número e o portfólio Meta ainda precisam de conferência. Nenhum token real nem dados financeiros estão neste arquivo. O repositório institucional não foi modificado. A leitura fiscal automática depende da contratação/conexão de um provedor que realmente valide documentos fiscais; até lá, os arquivos recebidos seguem para revisão manual.
+## Situação das integrações
 
-Os testes foram realizados com dados fictícios e serviços simulados. O arquivo inclui as migrações, que preservam as tabelas já existentes. Não inclui backup do banco de produção, arquivos de comprovantes, dependências, credenciais, cache de usuários ou histórico .git.
+Branding e campo de telefone foram implementados. O fluxo de e-mail/senha está preparado e testado com provedor simulado, mas o projeto Supabase real ainda não foi acessado/configurado. O acesso existente continua disponível e a audiência da hospedagem não foi alterada. E-mails reais, liberação do acesso exclusivamente por e-mail e configuração do projeto precisam ser concluídos antes de liberar o cadastro para terceiros.
 
-## Executar o projeto
+WhatsApp continua dependendo da ativação e configuração descritas no seu guia. Nenhum segredo deve ser enviado ao repositório institucional. O campo de telefone é contato; não autoriza recuperar uma senha sem confirmação de identidade.
 
-Consulte README.md. Requer Node >=22.13 e pnpm 11.25.0. O projeto usa Vinext/React, Cloudflare Workers/D1/R2 e autenticação fornecida pelo Sites. GitHub Pages isoladamente não executa o backend. Para desenvolvimento:
+## Desenvolvimento
+
+Requisitos declarados: Node >= 22.13 e pnpm 11.25.0. Leia README.md para configuração do banco local.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -37,9 +39,4 @@ node scripts/build-offline.mjs
 pnpm dev
 ```
 
-Aplique as migrações no ambiente local conforme README.md. O banco local é separado da produção. Antes de publicar:
-
-```sh
-node scripts/build-offline.mjs
-pnpm build
-```
+O projeto usa Cloudflare Workers/D1/R2 e integração de autenticação. GitHub Pages isoladamente não executa a API. As migrações preservam as tabelas existentes; são a estrutura do banco, não um backup dos registros.
