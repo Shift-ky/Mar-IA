@@ -1,3 +1,5 @@
+> A integração de mensagens ativa é o **Telegram**. Veja [como criar e ativar o bot](docs/TELEGRAM_ATIVACAO.md). As referências ao WhatsApp abaixo descrevem o histórico anterior à migração.
+
 # vinext-starter
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.

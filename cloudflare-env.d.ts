@@ -11,3 +11,5 @@ declare namespace Cloudflare {
  }
 }
 declare namespace Cloudflare { interface Env {SUPABASE_URL?:string;SUPABASE_PUBLISHABLE_KEY?:string;MAR_ADMIN_EMAIL?:string;} }
+
+declare namespace Cloudflare {interface Env {TELEGRAM_BOT_TOKEN?:string;TELEGRAM_WEBHOOK_SECRET?:string;TELEGRAM_BOT_USERNAME?:string;TELEGRAM_JOB_SECRET?:string;}}

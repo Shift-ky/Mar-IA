@@ -1,0 +1,67 @@
+import {build} from '../node_modules/.pnpm/esbuild@0.28.0/node_modules/esbuild/lib/main.js';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,mkdirSync} from 'node:fs';
+import assert from 'node:assert/strict';
+mkdirSync('work',{recursive:true});
+await build({entryPoints:['lib/telegram/service.ts','lib/telegram/commands.ts','lib/whatsapp/crypto.ts','app/api/whatsapp/route.ts'],bundle:true,platform:'node',format:'esm',outdir:'work/telegram-test',outbase:'.'});
+const service=await import('../work/telegram-test/lib/telegram/service.js');
+const commands=await import('../work/telegram-test/lib/telegram/commands.js');
+const {digest,signature}=await import('../work/telegram-test/lib/whatsapp/crypto.js');
+const old=await import('../work/telegram-test/app/api/whatsapp/route.js');
+assert.equal((await old.POST()).status,410);
+const sql=new DatabaseSync(':memory:');
+for(const f of ['0000_fat_shocker','0001_wealthy_flatman','0002_conscious_scrambler','0003_curious_firebird','0004_optimal_hammerhead','0005_nasty_millenium_guard'])sql.exec(readFileSync('drizzle/'+f+'.sql','utf8').replaceAll('--> statement-breakpoint',''));
+class Statement{constructor(query,args=[]){this.query=query;this.args=args}bind(...args){return new Statement(this.query,args)}async run(){const r=sql.prepare(this.query).run(...this.args);return {success:true,meta:{changes:r.changes}}}async first(){return sql.prepare(this.query).get(...this.args)||null}async all(){return {results:sql.prepare(this.query).all(...this.args)}}}
+const env={DB:{prepare:q=>new Statement(q),async batch(stmts){sql.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}},TELEGRAM_BOT_TOKEN:'123:synthetic-token',TELEGRAM_WEBHOOK_SECRET:'synthetic-secret',TELEGRAM_JOB_SECRET:'synthetic-job',TELEGRAM_BOT_USERNAME:'synthetic_bot'};
+sql.prepare('INSERT INTO families VALUES(?,?)').run('family','Test Family');
+sql.prepare('INSERT INTO profiles VALUES(?,?,?,?)').run('owner','owner@example.com','Owner','+5585000000000');
+sql.prepare('INSERT INTO settings VALUES(?,?)').run('owner','owner');
+sql.prepare('INSERT INTO settings VALUES(?,?)').run('rev:family','0');
+const pairCode='a'.repeat(48),expires=new Date(Date.now()+600000).toISOString();
+sql.prepare('INSERT INTO wa_pairings VALUES(?,?,?,?,?)').run(await digest('telegram:'+pairCode),'owner','owner@example.com','family',expires);
+const sent=[];let loseReply=false;const objects=new Map();
+env.BUCKET={async put(k,v){objects.set(k,v)},async get(k){return {body:objects.get(k)}}};
+globalThis.fetch=async(url,init)=>{
+ const u=String(url);assert(u.startsWith('https://api.telegram.org/'),'Only Telegram requests expected');
+ if(u.includes('/file/bot'))return new Response(new TextEncoder().encode('%PDF-synthetic receipt'),{headers:{'Content-Type':'application/pdf'}});
+ const data=JSON.parse(init.body);
+ if(u.endsWith('/getFile'))return Response.json({ok:true,result:{file_path:'documents/receipt.pdf',file_size:22}});
+ assert(u.endsWith('/sendMessage'));sent.push(data);if(loseReply){loseReply=false;throw Error('lost acknowledgement')}
+ return Response.json({ok:true,result:{message_id:sent.length}});
+};
+let updateId=0;
+async function deliver(text,{user=42,group=false,secret=env.TELEGRAM_WEBHOOK_SECRET,id=++updateId,document}={}){
+ const tasks=[];const message={message_id:id,date:Math.floor(Date.now()/1000),from:{id:user,is_bot:false},chat:{id:group?-99:user,type:group?'group':'private'},text,...(document?{document}: {})};
+ const r=await service.webhook(new Request('https://test.invalid/api/telegram/webhook',{method:'POST',headers:{'X-Telegram-Bot-Api-Secret-Token':secret},body:JSON.stringify({update_id:id,message})}),env,{waitUntil:p=>tasks.push(p)});
+ await Promise.all(tasks);return r;
+}
+assert.equal((await deliver('/saldo',{secret:'wrong'})).status,401);assert.equal(sent.length,0);
+await deliver('/saldo',{group:true});assert.equal(sent.length,0);
+await deliver('/start '+pairCode);assert.equal(sql.prepare('SELECT user FROM wa_links WHERE phone=?').get('tg:42').user,'owner');assert.equal(sql.prepare('SELECT count(*) n FROM wa_pairings').get().n,0);
+const repeat=++updateId;await deliver('despesa 32,50 mercado',{id:repeat});await deliver('despesa 32,50 mercado',{id:repeat});
+assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,1);assert.equal(JSON.parse(sql.prepare('SELECT data FROM records').get().data).source,'telegram');
+await deliver('/saldo');assert(sent.at(-1).text.includes('32,50'));assert.equal(sent.at(-1).chat_id,'42');
+await deliver('/saldo',{user:43});assert(!sent.at(-1).text.includes('32,50'));
+await deliver('',{document:{file_id:'synthetic_file',mime_type:'application/pdf'}});const doc=sql.prepare('SELECT * FROM wa_documents').get();assert.equal(doc.state,'needs_review');assert(doc.id.startsWith('tg-doc-'));assert.equal(objects.size,1);
+sql.prepare("INSERT INTO wa_inbox(id,phone,payload,state,created) VALUES('old','5585000000000','{}','queued',?)").run(new Date().toISOString());
+sql.prepare("INSERT INTO wa_outbox(id,phone,body,state,created) VALUES('old','5585000000000','{}','queued',?)").run(new Date().toISOString());
+const before=sent.length;await service.processJobs(env);assert.equal(sent.length,before);assert.equal(sql.prepare("SELECT state FROM wa_inbox WHERE id='old'").get().state,'queued');
+loseReply=true;await deliver('/ajuda');const uncertain=sent.length;await service.processJobs(env);assert.equal(sent.length,uncertain);assert(sql.prepare("SELECT id FROM wa_outbox WHERE state='needs_review'").get());
+sql.prepare("DELETE FROM wa_links WHERE phone='tg:42'").run();await deliver('/saldo');assert(!sent.at(-1).text.includes('32,50'));
+assert.equal(commands.parseCommand('/despesa 10 mercado').data.source,'telegram');assert.equal(commands.parseCommand('/relatorio 2026-10').action,'report');
+const body=JSON.stringify({at:Date.now()});let job;
+assert.equal((await service.jobs(new Request('https://test.invalid/api/telegram/jobs',{method:'POST',body,headers:{'x-mar-job-signature':await signature(env.TELEGRAM_JOB_SECRET,body)}}),env,{waitUntil:p=>job=p})).status,200);await job;
+globalThis.qaEnv=env;globalThis.qaUser={userId:'owner',email:'owner@example.com'};
+await build({entryPoints:['app/api/telegram/route.ts'],bundle:true,platform:'node',format:'esm',outfile:'work/telegram-api.mjs',plugins:[{name:'test-auth',setup(b){b.onResolve({filter:/chatgpt-auth$/},()=>({path:'auth',namespace:'qa'}));b.onResolve({filter:/^cloudflare:workers$/},()=>({path:'env',namespace:'qa'}));b.onLoad({filter:/.*/,namespace:'qa'},({path})=>({contents:path==='auth'?'export async function getChatGPTUser(){return globalThis.qaUser;}':'export const env=globalThis.qaEnv;',loader:'js'}));}}]});
+const api=await import('../work/telegram-api.mjs');
+const getResponse=await api.GET(new Request('https://test.invalid/api/telegram?family=family'));assert.equal(getResponse.status,200);assert.equal((await getResponse.json()).health.configured,true);
+let apiPair=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'pair'})}));assert.equal(apiPair.status,200);const code=(await apiPair.json()).code;
+assert(sql.prepare('SELECT hash FROM wa_pairings WHERE hash=?').get(await digest('telegram:'+code)));
+await deliver('vincular '+code);assert(sql.prepare("SELECT user FROM wa_links WHERE phone='tg:42'").get());
+sql.prepare('INSERT INTO wa_links VALUES(?,?,?,?)').run('5585000000000','owner','owner@example.com','family');
+assert.equal((await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'unlink'})}))).status,200);
+assert(sql.prepare("SELECT user FROM wa_links WHERE phone='5585000000000'").get());assert(!sql.prepare("SELECT user FROM wa_links WHERE phone='tg:42'").get());
+delete env.TELEGRAM_BOT_TOKEN;
+apiPair=await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'pair'})}));assert.equal(apiPair.status,503);
+globalThis.qaUser=null;assert.equal((await api.GET(new Request('https://test.invalid/api/telegram?family=family'))).status,403);
+console.log('PASS Telegram: webhook authentication, private chats, one-use linking API, permissions, duplicate update protection, financial commands, private PDF review, legacy queue isolation, uncertain deliveries, signed jobs, missing configuration and unlink isolation.');
