@@ -1,0 +1,7 @@
+{
+  "name": "mar-ia-whatsapp-receptor",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-24",
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": {"enabled":false}
+}

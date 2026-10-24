@@ -1,0 +1,1 @@
+ALTER TABLE `wa_outbox` ADD `attempted` text;

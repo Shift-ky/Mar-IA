@@ -1,0 +1,1 @@
+self.MAR_PRECACHE={"version":"90761dcd3670","files":["/offline/index.html","/offline/assets/index-CTV3oO1v.css","/offline/assets/index-DP3ldrRZ.js","/manifest.webmanifest","/mar-icon.svg","/mar-icon-192.png","/mar-icon-512.png"]};

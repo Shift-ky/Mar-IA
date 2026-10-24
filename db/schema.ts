@@ -1,0 +1,14 @@
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+export const settings=sqliteTable('settings',{key:text('key').primaryKey(),value:text('value').notNull()});
+export const families=sqliteTable('families',{id:text('id').primaryKey(),name:text('name').notNull()});
+export const members=sqliteTable('members',{id:text('id').primaryKey(),family:text('family').notNull(),email:text('email').notNull(),role:text('role').notNull(),permissions:text('permissions').notNull()});
+export const records=sqliteTable('records',{id:text('id').primaryKey(),family:text('family').notNull(),kind:text('kind').notNull(),data:text('data').notNull(),author:text('author').notNull()});
+export const syncOperations=sqliteTable('sync_operations',{id:text('id').primaryKey(),user:text('user').notNull(),result:text('result').notNull()});
+export const profiles=sqliteTable('profiles',{id:text('id').primaryKey(),email:text('email').notNull(),name:text('name').notNull()});
+export const joinRequests=sqliteTable('join_requests',{id:text('id').primaryKey(),family:text('family').notNull(),user:text('user').notNull(),email:text('email').notNull(),state:text('state').notNull()});
+export const waLinks=sqliteTable('wa_links',{phone:text('phone').primaryKey(),user:text('user').notNull(),email:text('email').notNull(),family:text('family').notNull()});
+export const waPairings=sqliteTable('wa_pairings',{hash:text('hash').primaryKey(),user:text('user').notNull(),email:text('email').notNull(),family:text('family').notNull(),expires:text('expires').notNull()});
+export const waInbox=sqliteTable('wa_inbox',{id:text('id').primaryKey(),phone:text('phone').notNull(),payload:text('payload').notNull(),state:text('state').notNull(),lease:text('lease'),expires:text('expires'),created:text('created').notNull(),error:text('error')});
+export const waOutbox=sqliteTable('wa_outbox',{id:text('id').primaryKey(),phone:text('phone').notNull(),body:text('body').notNull(),state:text('state').notNull(),created:text('created').notNull(),providerId:text('provider_id'),error:text('error'),attempted:text('attempted')});
+export const waDocuments=sqliteTable('wa_documents',{id:text('id').primaryKey(),family:text('family').notNull(),user:text('user').notNull(),phone:text('phone').notNull(),hash:text('hash').notNull(),storage:text('storage').notNull(),mime:text('mime').notNull(),state:text('state').notNull(),data:text('data').notNull(),created:text('created').notNull()});
+export const waDrafts=sqliteTable('wa_drafts',{id:text('id').primaryKey(),family:text('family').notNull(),user:text('user').notNull(),phone:text('phone').notNull(),data:text('data').notNull(),state:text('state').notNull(),created:text('created').notNull()});
