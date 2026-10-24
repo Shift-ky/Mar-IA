@@ -12,9 +12,9 @@ O perfil ganhou um campo de telefone. A migração adiciona esse campo como null
 
 ## Estado da ativação
 
-A instalação da integração Supabase foi confirmada nesta conversa. Entretanto, os comandos de acesso aos projetos Supabase não ficaram disponíveis ao executor. Nenhum projeto remoto foi selecionado, criado ou alterado nesta entrega. A URL do projeto, a chave publicável, as configurações de confirmação e a entrega real dos e-mails ainda precisam ser configuradas/verificadas. Nenhum e-mail real foi enviado nos testes.
+O projeto **Mar IA** foi criado em São Paulo (`elzwlqniyuhobayatgyf`) e sua URL e chave publicável foram configuradas no ambiente de produção, fora do Git. O site está público na hospedagem, mas as APIs financeiras exigem autenticação e autorização por família. Visitantes sem sessão recebem o formulário da Mar IA.
 
-Sem essas configurações, os formulários indicam que o acesso por e-mail está em preparação. O acesso existente com ChatGPT foi preservado. A audiência do Site continua privada. Para que pessoas entrem exclusivamente com e-mail, sem a barreira de entrada do ChatGPT da hospedagem, a página de acesso precisa ser disponibilizada num ambiente/audiência compatível, com autorização do proprietário; isso não foi alterado automaticamente.
+Ainda é necessário configurar/verificar no painel Supabase os URLs e templates abaixo e a entrega de e-mails. O conector disponível não expõe alterações dessas configurações. Nenhum e-mail real foi enviado nesta revisão; não considerar a confirmação e recuperação homologadas antes desse teste. O serviço padrão de e-mail do Supabase tem restrições para destinatários e produção; configure SMTP próprio para os membros da família.
 
 ## Configuração necessária
 
