@@ -39,7 +39,7 @@ async function deliver(text,{user=42,group=false,secret=env.TELEGRAM_WEBHOOK_SEC
 assert.equal((await deliver('/saldo',{secret:'wrong'})).status,401);assert.equal(sent.length,0);
 await deliver('/saldo',{group:true});assert.equal(sent.length,0);
 await deliver('/start '+pairCode);assert.equal(sql.prepare('SELECT user FROM wa_links WHERE phone=?').get('tg:42').user,'owner');assert.equal(sql.prepare('SELECT count(*) n FROM wa_pairings').get().n,0);
-await deliver('/menu');assert(sent.at(-1).text.includes('O que você deseja'));assert.equal(sent.at(-1).reply_markup.is_persistent,true);
+await deliver('/menu');assert(sent.at(-1).text.includes('O que você deseja'));assert.deepEqual(sent.at(-1).reply_markup,{remove_keyboard:true});
 const beforeGuide=sql.prepare('SELECT count(*) n FROM records').get().n;await deliver('Adicionar despesa');assert(sent.at(-1).text.includes('despesa 32,50'));assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,beforeGuide);
 await deliver('Ver tudo',{user:43});assert(!sent.at(-1).text.includes('Visão geral da sua família'));
 const repeat=++updateId;await deliver('despesa 32,50 mercado',{id:repeat});await deliver('despesa 32,50 mercado',{id:repeat});
