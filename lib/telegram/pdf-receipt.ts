@@ -1,4 +1,5 @@
 import {getDocumentProxy} from 'unpdf';
+import {parseFiscalCouponText} from './fiscal-coupon';
 
 const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const amountPattern=/(?<![\d.,])(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,9},\d{2}|\d{1,9}\.\d{2})(?![\d.,])/g;
@@ -7,6 +8,7 @@ const valueLabel=/^(?:valor(?:\s+(?:da\s+transacao|da\s+operacao|da\s+transferen
 function dateValue(s:string){const match=s.match(/\b(\d{2})[\/-](\d{2})[\/-](20\d{2})\b/)||s.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);if(!match)return null;const date=match[1].length===4?`${match[1]}-${match[2]}-${match[3]}`:`${match[3]}-${match[2]}-${match[1]}`;const parsed=new Date(date+'T12:00:00Z');return !isNaN(parsed.getTime())&&parsed.toISOString().slice(0,10)===date?date:null}
 
 export function parsePdfReceiptText(text:string):any{
+ const coupon=parseFiscalCouponText(text);if(coupon)return coupon;
  const lines=text.replace(/\u00a0/g,' ').split(/\r?\n/).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean);
  if(!text.trim())return {extraction:'image_only',reason:'Este PDF não contém texto legível. Preencha o valor manualmente ou use um serviço de leitura de imagens.'};
  const candidates:number[]=[];

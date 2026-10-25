@@ -9,6 +9,6 @@ assert.equal(parseCommand('/despesa').topic,'expense');assert.equal(parseCommand
 assert.equal(parseCommand('Adicionar receita').topic,'income');assert.equal(parseCommand('Relatório do mês').action,'report');
 assert(guide('expense').includes('despesa 32,50 supermercado'));assert(guide('income').includes('receita 1500 salario'));
 const records=[{kind:'transaction',name:'Receita confirmada',type:'income',amount:100,paid:true,date:'2026-10-24'},{kind:'transaction',name:'Despesa confirmada',type:'expense',amount:30,paid:true,date:'2026-10-24'},{kind:'transaction',name:'Receita prevista',type:'income',amount:500,paid:false,date:'2026-10-25'},{kind:'transaction',name:'Despesa pendente',type:'expense',amount:10,paid:false,date:'2026-10-25'}];
-assert(availableSummary(records).includes('70,00'));assert(!availableSummary(records).includes('500,00'));
+assert.equal(availableSummary(records),'Saldo disponível: R$ 70,00');assert(!availableSummary(records).includes('500,00'));
 assert(overview(records).includes('560,00'));assert(overview(records).includes('pendente'));assert.equal(menuKeyboard.is_persistent,true);
 console.log('PASS: menu intents, guided entries, pending amounts excluded from available balance and included in overall summary.');

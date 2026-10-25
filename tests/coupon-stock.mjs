@@ -1,0 +1,14 @@
+import {build} from '../node_modules/.pnpm/esbuild@0.28.0/node_modules/esbuild/lib/main.js';
+import assert from 'node:assert/strict';
+await build({entryPoints:['lib/telegram/fiscal-coupon.ts','lib/whatsapp/receipts.ts','lib/inventory.ts'],bundle:true,platform:'node',format:'esm',outdir:'work/coupon-stock',outbase:'lib'});
+const {parseFiscalCouponText:parse}=await import('../work/coupon-stock/telegram/fiscal-coupon.js');
+const {receiptPlan,validateReceipt}=await import('../work/coupon-stock/whatsapp/receipts.js');
+const {inventory}=await import('../work/coupon-stock/inventory.js');
+const sample='Mercado Exemplo\nDANFE NFC-e\nARROZ TESTE\n001 1 PC x R$ 4,99 4,99\nARROZ TESTE\n002 1 Un x R$ 4,99 4,99\nCENOURA KG\n003 0.724 Kg x R$ 4,89 3,54\nTotal de itens 3\nValor total R$ 13,52\nDesconto R$ 0,00\nAcréscimos R$ 0,00\nValor a pagar R$ 13,52\nEmissão\n15/10/2026';
+const result=parse(sample);assert.equal(result.extraction,'fiscal_coupon_text');assert.equal(result.draft.items.length,3);assert.equal(result.draft.proof,false);assert.equal(result.draft.items[0].unitPrice,4.99);assert.equal(result.draft.items[2].quantity,0.724);
+const plan=receiptPlan(result.draft,[],'synthetic-coupon','telegram');assert.equal(plan.rows.filter(r=>r.kind==='product').length,2);assert.equal(plan.rows.filter(r=>r.kind==='transaction').length,1);
+const records=plan.rows.map(r=>({...r.data,id:r.id,kind:r.kind}));const stock=inventory(records);
+assert.equal(stock.find(p=>p.name==='ARROZ TESTE').quantity,2);assert.equal(stock.find(p=>p.name==='ARROZ TESTE').lastUnitPrice,4.99);assert.equal(stock.find(p=>p.name==='CENOURA KG').quantity,0.724);assert.equal(stock.find(p=>p.name==='CENOURA KG').lastUnitPrice,4.89);
+const next=receiptPlan(result.draft,records,'synthetic-coupon-2','telegram');assert.equal(next.rows.filter(r=>r.kind==='product').length,0);const updated=inventory([...records,...next.rows.map(r=>({...r.data,id:r.id,kind:r.kind}))]);assert.equal(updated.find(p=>p.name==='ARROZ TESTE').quantity,4);
+assert.equal(parse(sample.replace('Total de itens 3','Total de itens 4')).extraction,'coupon_incomplete');const unbalanced=parse(sample.replace('Valor a pagar R$ 13,52','Valor a pagar R$ 99,00'));assert.equal(unbalanced.extraction,'coupon_unbalanced');assert.throws(()=>validateReceipt(unbalanced.draft));
+console.log('PASS: fiscal coupon items, PC/UN/KG units, unit prices, auto-create on empty stock, repeated item aggregation, existing product reuse and total mismatch rejection.');

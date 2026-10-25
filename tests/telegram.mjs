@@ -69,7 +69,7 @@ await deliver('vincular '+code);assert(sql.prepare("SELECT user FROM wa_links WH
 sql.prepare('INSERT INTO wa_links VALUES(?,?,?,?)').run('5585000000000','owner','owner@example.com','family');
 assert.equal((await api.POST(new Request('https://test.invalid/api/telegram',{method:'POST',body:JSON.stringify({family:'family',action:'unlink'})}))).status,200);
 assert(sql.prepare("SELECT user FROM wa_links WHERE phone='5585000000000'").get());assert(!sql.prepare("SELECT user FROM wa_links WHERE phone='tg:42'").get());
-assert.equal(commands.parseCommand('ver saldo').action,'balance');assert.equal(commands.parseCommand('a'.repeat(48)).action,'pair');
+assert.equal(commands.parseCommand('ver saldo').action,'available');assert.equal(commands.parseCommand('a'.repeat(48)).action,'pair');
 const diagnosticBody=JSON.stringify({at:Date.now(),diagnostic:true});
 const diagnostic=await service.jobs(new Request('https://test.invalid/api/telegram/jobs',{method:'POST',body:diagnosticBody,headers:{'x-mar-job-signature':await signature(env.TELEGRAM_JOB_SECRET,diagnosticBody)}}),env,{waitUntil(){throw Error('Diagnostic must not send messages')}});
 assert.equal(diagnostic.status,200);assert.equal((await diagnostic.json()).username,'synthetic_bot');
