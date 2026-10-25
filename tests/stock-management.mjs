@@ -1,0 +1,35 @@
+import {build} from '../node_modules/.pnpm/esbuild@0.28.0/node_modules/esbuild/lib/main.js';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,mkdirSync} from 'node:fs';
+import assert from 'node:assert/strict';
+mkdirSync('work',{recursive:true});
+await build({entryPoints:['app/api/data/route.ts','lib/inventory.ts','lib/whatsapp/receipts.ts'],bundle:true,platform:'node',format:'esm',outdir:'work/stock-test',outbase:'.',plugins:[{name:'test-auth',setup(b){b.onResolve({filter:/chatgpt-auth$/},()=>({path:'auth',namespace:'qa'}));b.onResolve({filter:/^cloudflare:workers$/},()=>({path:'env',namespace:'qa'}));b.onLoad({filter:/.*/,namespace:'qa'},({path})=>({contents:path==='auth'?'export async function getChatGPTUser(){return globalThis.qaUser;}':'export const env=globalThis.qaEnv;',loader:'js'}));}}]});
+const sql=new DatabaseSync(':memory:');for(const f of ['0000_fat_shocker','0001_wealthy_flatman','0002_conscious_scrambler','0003_curious_firebird','0004_optimal_hammerhead','0005_nasty_millenium_guard'])sql.exec(readFileSync('drizzle/'+f+'.sql','utf8').replaceAll('--> statement-breakpoint',''));
+class Statement{constructor(q,args=[]){this.q=q;this.args=args}bind(...args){return new Statement(this.q,args)}async first(){return sql.prepare(this.q).get(...this.args)||null}async all(){return {results:sql.prepare(this.q).all(...this.args)}}async run(){if(this.q.startsWith('SELECT'))return this.all();const r=sql.prepare(this.q).run(...this.args);return {success:true,meta:{changes:r.changes}}}}
+globalThis.qaEnv={DB:{prepare:q=>new Statement(q),async batch(stmts){sql.exec('BEGIN');try{const result=[];for(const stmt of stmts)result.push(await stmt.run());sql.exec('COMMIT');return result}catch(e){sql.exec('ROLLBACK');throw e}}}};
+const owner={userId:'synthetic-owner',email:'owner@example.com'};globalThis.qaUser=owner;
+const family='synthetic-family';sql.prepare('INSERT INTO families VALUES(?,?)').run(family,'Test Family');sql.prepare('INSERT INTO profiles VALUES(?,?,?,?)').run(owner.userId,owner.email,'Owner','+5585000000000');
+const api=await import('../work/stock-test/app/api/data/route.js');const {inventory,resolveReceiptProduct}=await import('../work/stock-test/lib/inventory.js');const {receiptPlan}=await import('../work/stock-test/lib/whatsapp/receipts.js');
+const snapshot=async()=>{const r=await api.GET(new Request('https://test.invalid/api/data?family='+family));assert.equal(r.status,200);return r.json()};
+async function body(data){return {account:globalThis.qaUser.userId,family,baseRevision:(await snapshot()).revision,operationId:crypto.randomUUID(),entityId:crypto.randomUUID(),...data}}
+const post=b=>api.POST(new Request('https://test.invalid/api/data',{method:'POST',body:JSON.stringify(b)}));
+const group=await body({action:'save',kind:'productGroup',data:{name:'Alimentos'}});assert.equal((await post(group)).status,200);
+const product=await body({action:'save',kind:'product',data:{name:'Arroz',unit:'un',initial:3,minimum:1,groupId:group.entityId,aliases:['ARR BRANCO']}});assert.equal((await post(product)).status,200);const productId=product.entityId;
+assert.equal((await post(await body({action:'save',kind:'productGroup',data:{name:'alimentos'}}))).status,400);
+assert.equal((await post(await body({action:'save',kind:'product',data:{name:'Outro',unit:'un',initial:0,minimum:0,groupId:'foreign-group'}}))).status,400);
+let state=await snapshot();assert.equal(state.records.find(r=>r.id===productId).groupId,group.entityId);
+const move=await body({action:'stockMove',productId,delta:-1,reason:'Saída rápida'});assert.equal((await post(move)).status,200);assert.equal((await post(move)).status,200);state=await snapshot();assert.equal(inventory(state.records)[0].quantity,2);
+assert.equal((await post(await body({action:'stockMove',productId,delta:-99}))).status,400);
+assert.equal((await post(await body({action:'save',kind:'product',id:productId,data:{name:'Arroz',unit:'kg',initial:3,minimum:1,groupId:group.entityId}}))).status,400);
+assert.equal((await post(await body({action:'save',kind:'product',id:productId,data:{name:'Arroz',unit:'un',initial:999,minimum:2,groupId:group.entityId,aliases:['ARR BRANCO']}}))).status,200);state=await snapshot();assert.equal(inventory(state.records)[0].quantity,2);
+assert.equal(resolveReceiptProduct({name:'Arroz branco',unit:'un'},state.records).id,productId);assert.equal(resolveReceiptProduct({name:'Arroz parboilizado',unit:'un'},state.records).id,productId);assert.equal(resolveReceiptProduct({name:'ARR BRANCO',unit:'un'},state.records).id,productId);assert.equal(resolveReceiptProduct({name:'Arroz branco',unit:'kg'},state.records),null);
+const receipt={store:'Test Market',date:'2026-10-24',total:16,items:[{name:'ARR CAMIL T1',quantity:2,unit:'un',unitPrice:5,lineTotal:10,productId},{name:'Arroz parboilizado',quantity:1,unit:'un',unitPrice:6,lineTotal:6}]};
+const doc='synthetic-document';sql.prepare('INSERT INTO wa_documents VALUES(?,?,?,?,?,?,?,?,?,?)').run(doc,family,owner.userId,'tg:42','hash','private-file','application/pdf','needs_review','{}',new Date().toISOString());
+assert.equal((await post(await body({action:'receiptApprove',documentId:doc,receipt}))).status,200);state=await snapshot();assert.equal(state.records.filter(r=>r.kind==='product').length,1);assert.equal(inventory(state.records)[0].quantity,5);assert.equal(inventory(state.records)[0].lastUnitPrice,6);
+assert.equal(resolveReceiptProduct({name:'ARR CAMIL T1',unit:'un'},state.records).id,productId);
+const later=receiptPlan({...receipt,total:5,items:[{name:'ARR CAMIL T1',quantity:1,unit:'un',unitPrice:5,lineTotal:5}]},state.records,'next-doc');assert.equal(later.rows.filter(r=>r.kind==='product').length,0);assert.equal(later.rows.find(r=>r.kind==='stockMovement').data.productId,productId);
+assert.throws(()=>receiptPlan({...receipt,items:[{...receipt.items[0],productId:'foreign-product'}]},state.records,'bad-doc'));
+assert.equal((await post(await body({action:'delete',id:group.entityId}))).status,400);
+const viewer={userId:'synthetic-viewer',email:'viewer@example.com'};sql.prepare('INSERT INTO profiles VALUES(?,?,?,?)').run(viewer.userId,viewer.email,'Viewer','+5585000000001');sql.prepare('INSERT INTO members VALUES(?,?,?,?,?)').run('synthetic-member',family,viewer.email,'member',JSON.stringify({view:true}));globalThis.qaUser=viewer;
+assert.equal((await post(await body({action:'stockMove',productId,delta:-1}))).status,403);assert.equal((await post(await body({action:'save',kind:'productGroup',data:{name:'Forbidden'}}))).status,403);
+console.log('PASS: groups, product editing, group isolation, quick stock-out idempotence/insufficient stock, unit protection, automatic/saved de-para, canonical stock accumulation, prices and permission checks.');
