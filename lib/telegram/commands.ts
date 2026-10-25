@@ -1,8 +1,15 @@
 import {parseCommand as parseLegacy} from '../whatsapp/commands';
 import {summary,money} from '../whatsapp/commands';
+import {inventory} from '../inventory';
 export {summary,money};
 export const menuKeyboard={remove_keyboard:true};
-export const help='O que você deseja fazer na Mar IA?\n\n• Ver saldo disponível: receitas menos despesas confirmadas.\n• Ver tudo: resumo financeiro e últimas movimentações.\n• Adicionar lançamento: escolha receita ou despesa.\n• Enviar comprovante: anexe uma foto ou PDF para revisão.\n\nUse o botão Menu do Telegram para escolher uma opção. Se ainda não vinculou sua conta, entre na Mar IA → Telegram → Gerar código de vínculo.\nhttps://financas-familia-robson.merryscout8.chatgpt.site/';
+export function shoppingList(records:any[],requestedPage=1){
+ const items=inventory(records).filter(p=>p.missing>0).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ if(!items.length)return 'Lista de compras vazia. Nenhum produto está abaixo da quantidade mínima cadastrada no estoque.';
+ const pages=Math.ceil(items.length/20),page=Math.min(pages,Math.max(1,Math.floor(requestedPage)||1));
+ return `Lista de compras${pages>1?` · página ${page}/${pages}`:''}\nQuantidades que faltam para atingir o mínimo:\n\n`+items.slice((page-1)*20,page*20).map(p=>`• ${p.name}: ${p.missing.toLocaleString('pt-BR',{maximumFractionDigits:3})} ${p.unit}`).join('\n')+(page<pages?`\n\nPróxima página: /compras ${page+1}`:'');
+}
+export const help='O que você deseja fazer na Mar IA?\n\n• Ver saldo disponível: receitas menos despesas confirmadas.\n• Ver tudo: resumo financeiro e últimas movimentações.\n• Lista de compras: produtos e quantidades que faltam no estoque.\n• Adicionar lançamento: escolha receita ou despesa.\n• Enviar comprovante: anexe uma foto ou PDF para revisão.\n\nUse o botão Menu do Telegram para escolher uma opção. Se ainda não vinculou sua conta, entre na Mar IA → Telegram → Gerar código de vínculo.\nhttps://financas-familia-robson.merryscout8.chatgpt.site/';
 export function guide(topic:string){if(topic==='expense')return 'Adicionar despesa\n\nEnvie o valor e a descrição, assim:\ndespesa 32,50 supermercado\n\nO lançamento será registrado como despesa paga, com a data de hoje. Para outra data ou pagamento pendente, use o aplicativo. Você também pode anexar um comprovante.';if(topic==='income')return 'Adicionar receita\n\nEnvie o valor e a descrição, assim:\nreceita 1500 salario\n\nO lançamento será registrado como receita recebida, com a data de hoje. Para outra data ou receita prevista, use o aplicativo.';if(topic==='document')return 'Enviar comprovante\n\nToque no clipe e anexe o PDF ou uma foto (JPEG/PNG), de até 10 MB. PDFs com texto têm leitura do valor. Depois, revise descrição, data e tipo em Mar IA → Telegram → Comprovantes antes de confirmar. Fotos e PDFs digitalizados podem precisar de preenchimento manual.';return 'Adicionar lançamento\n\nO valor entrou ou saiu?\n• Se entrou, escolha /receita no Menu.\n• Se saiu, escolha /despesa no Menu.\n\nOu escreva, por exemplo:\ndespesa 32,50 supermercado\nreceita 1500 salario';}
 export function availableSummary(records:any[]){const tx=records.filter(r=>r.kind==='transaction'&&r.paid===true&&!r.voided);const total=tx.reduce((sum,r)=>sum+(r.type==='income'?1:-1)*Number(r.amount||0),0);return 'Saldo disponível: '+money(total);}
 export function overview(records:any[]){const tx=records.filter(r=>r.kind==='transaction'&&!r.voided);const recent=[...tx].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);return 'Visão geral da sua família\n\n'+availableSummary(records)+'\n\nTodos os lançamentos, incluindo previstos\n'+summary(records).split('\n').slice(1).join('\n')+'\n\nÚltimas movimentações\n'+(recent.map(r=>`${r.date} · ${r.name} · ${r.type==='expense'?'-':'+'}${money(r.amount)}${r.paid?'':' · pendente'}`).join('\n')||'Nenhuma movimentação registrada.')+'\n\n'+tx.length+' lançamento(s) · '+records.filter(r=>r.kind==='card').length+' cartão(ões) · '+records.filter(r=>r.kind==='goal').length+' meta(s).\nPara ver e editar todos os detalhes:\nhttps://financas-familia-robson.merryscout8.chatgpt.site/';}
@@ -14,6 +21,8 @@ export function parseCommand(text:string,date?:string){
  if(['menu','start','ajuda','help'].includes(key))return {action:'help'};
  if(['saldo','disponivel','saldo disponivel','ver saldo disponivel'].includes(key))return {action:'available'};
  if(['tudo','ver tudo','visao geral'].includes(key))return {action:'overview'};
+ const shopping=key.match(/^(?:compras|(?:ver |solicitar )?lista de compras?)(?:\s+([1-9]\d{0,5}))?$/);
+ if(shopping)return {action:'shopping',page:Number(shopping[1]||1)};
  if(['lancamento','adicionar lancamento','novo lancamento'].includes(key))return {action:'guide',topic:'entry'};
  if(['despesa','adicionar despesa','adicionar dispeza','registrar despesa'].includes(key))return {action:'guide',topic:'expense'};
  if(['receita','adicionar receita','registrar receita'].includes(key))return {action:'guide',topic:'income'};

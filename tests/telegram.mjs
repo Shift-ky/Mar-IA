@@ -46,6 +46,11 @@ const repeat=++updateId;await deliver('despesa 32,50 mercado',{id:repeat});await
 assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,1);assert.equal(JSON.parse(sql.prepare('SELECT data FROM records').get().data).source,'telegram');
 await deliver('/saldo');assert(sent.at(-1).text.includes('32,50'));assert.equal(sent.at(-1).chat_id,'42');
 await deliver('/saldo',{user:43});assert(!sent.at(-1).text.includes('32,50'));
+sql.prepare('INSERT INTO records(id,family,kind,data,author) VALUES(?,?,?,?,?)').run('shopping-rice','family','product',JSON.stringify({name:'Arroz',unit:'kg',initial:1.5,minimum:5}),'owner');
+sql.prepare('INSERT INTO records(id,family,kind,data,author) VALUES(?,?,?,?,?)').run('other-rice','other-family','product',JSON.stringify({name:'Produto privado',unit:'un',initial:0,minimum:9}),'other');
+await deliver('/compras');assert(sent.at(-1).text.includes('Arroz: 3,5 kg'));assert(!sent.at(-1).text.includes('Produto privado'));assert.deepEqual(sent.at(-1).reply_markup,{remove_keyboard:true});
+await deliver('/compras',{user:43});assert(!sent.at(-1).text.includes('Arroz'));
+sql.prepare("DELETE FROM records WHERE id IN ('shopping-rice','other-rice')").run();
 await deliver('',{document:{file_id:'synthetic_file',mime_type:'application/pdf'}});const doc=sql.prepare('SELECT * FROM wa_documents').get();assert.equal(doc.state,'needs_review');assert(doc.id.startsWith('tg-doc-'));assert.equal(objects.size,1);
 sql.prepare("INSERT INTO wa_inbox(id,phone,payload,state,created) VALUES('old','5585000000000','{}','queued',?)").run(new Date().toISOString());
 sql.prepare("INSERT INTO wa_outbox(id,phone,body,state,created) VALUES('old','5585000000000','{}','queued',?)").run(new Date().toISOString());
