@@ -1,6 +1,15 @@
 let connection:Promise<IDBDatabase>|null=null;
-function db(){if(!connection)connection=new Promise((resolve,reject)=>{const r=indexedDB.open('mar-ia',1);r.onupgradeneeded=()=>r.result.createObjectStore('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(Error('Não foi possível abrir o armazenamento local. Verifique se o navegador permite salvar dados.'));});return connection;}
-export async function read(key:string):Promise<any>{const d=await db();return new Promise((resolve,reject)=>{const t=d.transaction('state');const r=t.objectStore('state').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
-export async function write(key:string,fn:(v:any)=>any){const d=await db();return new Promise<any>((resolve,reject)=>{const t=d.transaction('state','readwrite');const store=t.objectStore('state');let value:any;const r=store.get(key);r.onsuccess=()=>{try{value=fn(r.result);store.put(value,key);}catch(e){t.abort();reject(e)}};t.oncomplete=()=>{window.dispatchEvent(new Event('mar-local-change'));resolve(value)};t.onerror=()=>reject(Error('Não foi possível salvar no dispositivo. Libere espaço antes de tentar novamente.'));t.onabort=()=>reject(Error('O salvamento local foi interrompido.'));});}
-
-export async function clearAccount(a:string){const d=await db();await new Promise<void>((resolve,reject)=>{const t=d.transaction('state','readwrite');t.objectStore('state').delete('user:'+a);t.objectStore('state').delete('active');t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)});}
+function db(){
+ if(!connection)connection=new Promise<IDBDatabase>((resolve,reject)=>{
+  const request=indexedDB.open('mar-ia',1);
+  request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('state'))request.result.createObjectStore('state')};
+  request.onsuccess=()=>{const database=request.result;database.onversionchange=()=>{database.close();connection=null};database.onclose=()=>{connection=null};resolve(database)};
+  request.onerror=()=>{connection=null;reject(Error('Não foi possível abrir o armazenamento local. Verifique se o navegador permite salvar dados.'))};
+  request.onblocked=()=>{connection=null;reject(Error('Outro acesso está bloqueando o armazenamento local. Feche as outras abas e tente novamente.'))};
+ });
+ return connection;
+}
+function transaction(database:IDBDatabase,mode:IDBTransactionMode){if(mode==='readwrite'){try{return database.transaction('state',mode,{durability:'strict'})}catch{/* Older browsers still commit atomically without the optional durability hint. */}}return database.transaction('state',mode);}
+export async function read(key:string):Promise<any>{const database=await db();return new Promise((resolve,reject)=>{const tx=transaction(database,'readonly');const request=tx.objectStore('state').get(key);let value:any;request.onsuccess=()=>{value=request.result};tx.oncomplete=()=>resolve(value);tx.onerror=tx.onabort=()=>reject(tx.error||Error('Não foi possível ler os dados deste aparelho.'));});}
+export async function write(key:string,fn:(v:any)=>any){const database=await db();return new Promise<any>((resolve,reject)=>{const tx=transaction(database,'readwrite');const store=tx.objectStore('state');let value:any;const request=store.get(key);request.onsuccess=()=>{try{value=fn(request.result);store.put(value,key)}catch(e){tx.abort();reject(e)}};tx.oncomplete=()=>{window.dispatchEvent(new Event('mar-local-change'));resolve(value)};tx.onerror=()=>reject(Error('Não foi possível salvar no dispositivo. Libere espaço antes de tentar novamente.'));tx.onabort=()=>reject(Error('O salvamento local foi interrompido.'));});}
+export async function clearAccount(account:string){const database=await db();await new Promise<void>((resolve,reject)=>{const tx=transaction(database,'readwrite');tx.objectStore('state').delete('user:'+account);tx.objectStore('state').delete('active');tx.oncomplete=()=>resolve();tx.onerror=tx.onabort=()=>reject(tx.error)});}

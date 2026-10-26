@@ -86,3 +86,10 @@ online=false;await client.enqueue({action:'save',family:family.entityId,kind:'sh
 online=true;await sync();assert.equal((await client.localView()).queue.length,0);
 await client.enqueue({action:'delete',family:family.entityId,id:shopping.entityId});await sync();assert(!(await client.localView()).snapshot.records.some(r=>r.id===shopping.entityId));
 console.log('PASS: independent shopping list, offline creation, mark purchased, synchronization and deletion.');
+
+// Proxy outages and an expired session must not permanently poison a persisted operation.
+const originalFetch=globalThis.fetch;let temporaryStatus=503;globalThis.fetch=async(path,options={})=>{if(options.method==='POST'&&temporaryStatus){const code=temporaryStatus;temporaryStatus=0;return code===503?new Response("You're offline",{status:503}):Response.json({error:'Faça login'},{status:401});}return originalFetch(path,options);};
+const retryItem=await client.enqueue({action:'save',family:family.entityId,kind:'shoppingItem',data:{name:'Retentativa',quantity:1,unit:'un',bought:false}});
+await sync();assert.equal(status.state,'offline');assert.equal((await client.localView()).queue.length,1);assert.equal((await client.localView()).queue[0].error,undefined);await sync();assert.equal((await client.localView()).queue.length,0);
+await client.enqueue({action:'save',family:family.entityId,kind:'shoppingItem',id:retryItem.entityId,data:{name:'Retentativa',quantity:2,unit:'un',bought:false}});temporaryStatus=401;await sync();assert.equal(status.state,'blocked');assert.equal((await client.localView()).queue[0].error,undefined);await sync();assert.equal((await client.localView()).queue.length,0);globalThis.fetch=originalFetch;
+console.log('PASS: temporary host outage and expired session preserve the queue and recover without discarding or manually rebasing operations.');
