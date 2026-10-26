@@ -4,9 +4,9 @@ await build({entryPoints:['lib/telegram/commands.ts'],bundle:true,platform:'node
 const {parseCommand,guide,availableSummary,overview,menuKeyboard,shoppingList}=await import('../work/menu-test.mjs');
 for(const input of ['/compras','lista de compra','solicitar lista de compras'])assert.equal(parseCommand(input).action,'shopping');
 assert.equal(parseCommand('/compras 2').page,2);
-const stock=[{kind:'product',id:'rice',name:'Arroz',unit:'kg',initial:2,minimum:5},{kind:'stockMovement',productId:'rice',delta:-0.5},{kind:'product',id:'milk',name:'Leite',unit:'un',initial:0,minimum:3},{kind:'product',id:'full',name:'Feijão',unit:'kg',initial:4,minimum:2}];
+const stock=[{kind:'shoppingItem',name:'Arroz',unit:'kg',quantity:3.5,bought:false},{kind:'shoppingItem',name:'Leite',unit:'un',quantity:3,bought:false},{kind:'shoppingItem',name:'Feijão',unit:'kg',quantity:1,bought:true},{kind:'product',name:'Legado',unit:'un',minimum:8,initial:0}];
 assert(shoppingList(stock).includes('Arroz: 3,5 kg'));assert(shoppingList(stock).includes('Leite: 3 un'));assert(!shoppingList(stock).includes('Feijão'));assert(shoppingList([]).includes('vazia'));
-const many=Array.from({length:25},(_,i)=>({kind:'product',id:String(i),name:'Produto '+String(i).padStart(2,'0'),unit:'un',initial:0,minimum:1}));
+const many=Array.from({length:25},(_,i)=>({kind:'shoppingItem',id:String(i),name:'Produto '+String(i).padStart(2,'0'),unit:'un',quantity:1,bought:false}));
 assert(shoppingList(many).includes('/compras 2'));assert(shoppingList(many,2).includes('Produto 24: 1 un'));assert(!shoppingList(many,2).includes('Produto 00:'));assert(shoppingList(many).length<4000);
 assert.deepEqual(menuKeyboard,{remove_keyboard:true});
 assert.equal(parseCommand('Ver saldo disponível').action,'available');assert.equal(parseCommand('/tudo').action,'overview');

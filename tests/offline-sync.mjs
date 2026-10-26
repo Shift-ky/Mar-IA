@@ -69,3 +69,20 @@ await relay.scheduled({},env,{waitUntil(){throw Error('Disabled relay must not s
 console.log('PASS: retired WhatsApp relay rejects callbacks and never forwards or schedules jobs.');
 
 sql.prepare('UPDATE wa_links SET user=?,email=?').run(owner.userId,owner.email);lostDelivery=true;await inbound('receita 12,34 teste envio incerto');assert(sql.prepare("SELECT id FROM wa_outbox WHERE state='needs_review'").get());const afterLoss=sent;await wa.processJobs(env);assert.equal(sent,afterLoss);sql.prepare("INSERT INTO wa_outbox(id,phone,body,state,created,attempted) VALUES(?,?,?,'sending',?,?)").run('synthetic-crash-reply',phone,JSON.stringify({text:'test'}),new Date().toISOString(),new Date(Date.now()-300000).toISOString());await wa.processJobs(env);assert.equal(sql.prepare('SELECT state FROM wa_outbox WHERE id=?').get('synthetic-crash-reply').state,'needs_review');assert.equal(sent,afterLoss);console.log('PASS: uncertain outbound delivery is not resent and interrupted sending is recovered for review.');
+
+// Receipt deletion projects offline, then safely retries a committed deletion after response loss.
+await sync();const beforeBankDelete=txCount();const stockBeforeDelete=stock.inventory((await client.localView()).snapshot.records).find(p=>p.name==='Arroz').quantity;
+online=false;await client.enqueue({action:'receiptDelete',family:family.entityId,documentId:bank.id});
+let deletedView=(await client.localView()).snapshot;assert(!deletedView.documents.some(d=>d.id===bank.id));assert(!deletedView.records.some(r=>r.receiptId===bank.id));assert.equal(stock.inventory(deletedView.records).find(p=>p.name==='Arroz').quantity,stockBeforeDelete);
+online=true;loseResponse=true;await sync();assert.equal((await client.localView()).queue.length,1);await sync();assert.equal((await client.localView()).queue.length,0);assert.equal(txCount(),beforeBankDelete-1);assert.equal(sql.prepare('SELECT state FROM wa_documents WHERE id=?').get(bank.id).state,'deleted');
+console.log('PASS: offline receipt deletion and lost-response idempotence.');
+
+// Shopping list is independent of stock and synchronizes offline changes.
+await sync();online=false;
+const shopping=await client.enqueue({action:'save',family:family.entityId,kind:'shoppingItem',data:{name:'Café',quantity:2,unit:'pacote',bought:false}});
+let shoppingItem=(await client.localView()).snapshot.records.find(r=>r.id===shopping.entityId);assert.equal(shoppingItem.quantity,2);
+online=true;await sync();assert.equal((await client.localView()).queue.length,0);
+online=false;await client.enqueue({action:'save',family:family.entityId,kind:'shoppingItem',id:shopping.entityId,data:{name:'Café',quantity:2,unit:'pacote',bought:true}});assert.equal((await client.localView()).snapshot.records.find(r=>r.id===shopping.entityId).bought,true);
+online=true;await sync();assert.equal((await client.localView()).queue.length,0);
+await client.enqueue({action:'delete',family:family.entityId,id:shopping.entityId});await sync();assert(!(await client.localView()).snapshot.records.some(r=>r.id===shopping.entityId));
+console.log('PASS: independent shopping list, offline creation, mark purchased, synchronization and deletion.');
