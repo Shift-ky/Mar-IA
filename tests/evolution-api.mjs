@@ -1,0 +1,28 @@
+import {build} from '../node_modules/.pnpm/esbuild@0.28.0/node_modules/esbuild/lib/main.js';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,readdirSync,mkdirSync} from 'node:fs';
+import assert from 'node:assert/strict';
+mkdirSync('work',{recursive:true});
+await build({entryPoints:['app/api/evolution/route.ts','lib/evolution/documents.ts'],bundle:true,platform:'node',format:'esm',outdir:'work/evolution-api',outbase:'.',plugins:[{name:'test-auth',setup(b){b.onResolve({filter:/chatgpt-auth$/},()=>({path:'auth',namespace:'qa'}));b.onResolve({filter:/^cloudflare:workers$/},()=>({path:'env',namespace:'qa'}));b.onLoad({filter:/.*/,namespace:'qa'},({path})=>({contents:path==='auth'?'export async function getChatGPTUser(){return globalThis.qaUser;}':'export const env=globalThis.qaEnv;',loader:'js'}));}}]});
+const sql=new DatabaseSync(':memory:');for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sql.exec(readFileSync('drizzle/'+f,'utf8').replaceAll('--> statement-breakpoint',''));
+class Statement{constructor(query,args=[]){this.query=query;this.args=args}bind(...args){return new Statement(this.query,args)}async run(){const r=sql.prepare(this.query).run(...this.args);return {success:true,meta:{changes:r.changes}}}async first(){return sql.prepare(this.query).get(...this.args)||null}async all(){return {results:sql.prepare(this.query).all(...this.args)}}}
+const objects=new Map();globalThis.qaEnv={DB:{prepare:q=>new Statement(q),async batch(stmts){sql.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}},BUCKET:{async put(k,v){objects.set(k,v)},async get(k){return objects.has(k)?{body:objects.get(k)}:null},async delete(k){objects.delete(k)}},EVOLUTION_INSTANCE:'mar-ia',EVOLUTION_BRIDGE_SECRET:'synthetic'};
+const env=globalThis.qaEnv;globalThis.qaUser={userId:'owner',email:'owner@example.com'};
+for(const f of ['family','other'])sql.prepare('INSERT INTO families VALUES(?,?)').run(f,f);
+sql.prepare('INSERT INTO profiles VALUES(?,?,?,?)').run('owner','owner@example.com','Owner','+5585999999999');sql.prepare('INSERT INTO members VALUES(?,?,?,?,?)').run('member','family','owner@example.com','admin','{}');
+const api=await import('../work/evolution-api/app/api/evolution/route.js'),docs=await import('../work/evolution-api/lib/evolution/documents.js');
+const request=(data,origin='https://test.invalid')=>new Request('https://test.invalid/api/evolution',{method:'POST',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify({family:'family',...data})});
+assert.equal((await api.POST(request({action:'pair'},'https://evil.invalid'))).status,403);
+const pair=await(await api.POST(request({action:'pair'}))).json();assert.match(pair.code,/^[a-f0-9]{48}$/);
+const a={user:'owner',email:'owner@example.com',family:'family',permissions:{add:true}};
+const attachment={base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR9sAAAAASUVORK5CYII='};
+const id=await docs.storeDocument(env,a,attachment);assert.equal(await docs.storeDocument(env,a,attachment),id);assert.equal(objects.size,1);
+let view=await(await api.GET(new Request('https://test.invalid/api/evolution?family=family'))).json();assert.equal(view.documents.length,1);
+const receipt={store:'Mercado',total:50,date:'2026-10-27',type:'expense',paymentMethod:'Pix',paid:true};
+assert.equal((await api.POST(request({action:'approveDocument',documentId:id,receipt}))).status,200);assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,1);
+assert.equal((await api.POST(request({action:'approveDocument',documentId:id,receipt}))).status,403);assert.equal(sql.prepare('SELECT count(*) n FROM records').get().n,1);
+assert.equal((await api.GET(new Request('https://test.invalid/api/evolution?family=other&document='+id))).status,403);
+assert.equal((await api.GET(new Request('https://test.invalid/api/evolution?family=family&document='+id))).status,200);
+globalThis.qaUser=null;assert.equal((await api.GET(new Request('https://test.invalid/api/evolution?family=family'))).status,403);
+sql.prepare("DELETE FROM families WHERE id='family'").run();await docs.purgeDocuments(env);assert.equal(objects.size,0);assert.equal(sql.prepare('SELECT count(*) n FROM ev_documents').get().n,0);
+console.log('PASS: Evolution account authentication, origin validation, pairing, private documents, file deduplication, reviewed posting, repeat confirmation rejection and bucket cleanup.');

@@ -6,6 +6,14 @@ const [command, ...args] = process.argv.slice(2);
 if (!["dev", "build"].includes(command)) throw new Error("Expected dev or build.");
 const managedLinux = readExecutionProfile() === "managed-linux";
 
+if (command === "build") {
+  const offline = spawnSync(process.execPath, [
+    fileURLToPath(new URL("./build-offline.mjs", import.meta.url)),
+  ], { stdio: "inherit" });
+  if (offline.error) throw offline.error;
+  if (offline.status !== 0) process.exit(offline.status ?? 1);
+}
+
 if (managedLinux && command === "build") {
   const result = spawnSync("bash", [
     fileURLToPath(new URL("./build-verified.sh", import.meta.url)), ...args,

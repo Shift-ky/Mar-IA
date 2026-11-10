@@ -1,0 +1,10 @@
+'use client';
+import {useState} from 'react';
+import {Pencil} from 'lucide-react';
+const money=(value:number,currency='BRL')=>value.toLocaleString('pt-BR',{style:'currency',currency});
+export default function MovementHistory({records,month,onEdit,canEdit}:{records:any[];month:string;onEdit?:(record:any)=>void;canEdit?:boolean}){
+ const [showAll,ShowAll]=useState(false);
+ const all=records.filter(r=>['transaction','walletMovement','walletTransfer'].includes(r.kind)&&!r.voided).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(a.id).localeCompare(String(b.id)));
+ const visible=all.filter(r=>showAll||r.date?.startsWith(month));
+ return <section className="panel"><div className="sectiontitle"><div><h2>Histórico de movimentações</h2><p>{showAll?'Movimentações de todos os períodos.':'Movimentações do mês selecionado em Finanças.'}</p></div></div><button type="button" aria-pressed={showAll} onClick={()=>ShowAll(true)}>Mostrar tudo</button><p className="muted">{visible.length} movimentação(ões)</p>{visible.map(r=>{const transfer=r.kind==='walletTransfer',out=r.kind==='walletMovement'?r.direction==='out':r.type==='expense';return <div className="forecastline" key={r.id}><span><strong>{r.name||'Transferência entre carteiras'}</strong><small> · {String(r.date||'').split('-').reverse().join('/')} · {transfer?`${r.fromWallet} → ${r.toWallet}`:r.wallet||r.paymentMethod||'Carteira não informada'}</small></span><strong>{transfer?'':out?'− ':'+ '}{money(Number(r.amount)||0,r.currency||'BRL')}</strong><span className={'badge '+(r.paid===false?'pending':'paid')}>{r.local?'Salvo no aparelho':r.paid===false?'Pendente':transfer?'Transferência':r.kind==='walletMovement'?'Ajuste de saldo':out?'Despesa':'Receita'}</span>{canEdit&&r.kind==='transaction'&&<button type="button" className="iconbutton" aria-label={`Editar ${r.name}`} title="Editar lançamento e competência" onClick={()=>onEdit?.(r)}><Pencil size={15}/></button>}</div>})}{!visible.length&&<p className="muted">Nenhuma movimentação neste filtro. Use Mostrar tudo para consultar todos os períodos.</p>}</section>;
+}

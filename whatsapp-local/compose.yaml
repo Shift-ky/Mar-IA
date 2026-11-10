@@ -1,0 +1,73 @@
+name: mar-ia-whatsapp
+services:
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?Execute configurar.ps1}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/0
+      CACHE_REDIS_PREFIX_KEY: mar-ia
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      TELEMETRY_ENABLED: "false"
+      LOG_LEVEL: ERROR,WARN
+    volumes:
+      - instances:/evolution/instances
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Execute configurar.ps1}
+      POSTGRES_DB: evolution
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U evolution"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  bridge:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8790:8788"
+    environment:
+      MAR_SITE_URL: ${MAR_SITE_URL}
+      MAR_SITE_SERVICE_TOKEN: ${MAR_SITE_SERVICE_TOKEN:-}
+      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-mar-ia}
+      EVOLUTION_BRIDGE_SECRET: ${EVOLUTION_BRIDGE_SECRET:?Execute configurar.ps1}
+      EVOLUTION_LOCAL_SECRET: ${EVOLUTION_LOCAL_SECRET}
+      BRIDGE_DB: /data/bridge.sqlite
+    volumes:
+      - bridge:/data
+    depends_on: [evolution]
+volumes:
+  instances:
+  postgres:
+  redis:
+  bridge:
