@@ -1,9 +1,11 @@
+import {serializeCookieHeader} from '@supabase/ssr';
 import {boundedBody} from '../../../lib/whatsapp/crypto';
 import {serverAuthForRequest,authConfigured} from '../../../lib/supabase/server';
 import {profileFields} from '../../../lib/profile';
 import {env} from 'cloudflare:workers';
 export const dynamic='force-dynamic';
 function json(value:any,status=200){return Response.json(value,{status,headers:{'Cache-Control':'private, no-store, max-age=0','Pragma':'no-cache','Expires':'0'}})}
+function withRememberCookie(response:Response,request:Request,remember:boolean){response.headers.append('Set-Cookie',serializeCookieHeader('mar-ia-remember',remember?'1':'',{path:'/',maxAge:remember?30*24*60*60:0,httpOnly:true,sameSite:'lax',secure:new URL(request.url).protocol==='https:'}));return response;}
 function withAuthHeaders(response:Response,headers?:Headers,cookies?:Map<string,string>){
  for(const cookie of cookies?.values()||[])response.headers.append('Set-Cookie',cookie);
  headers?.forEach((value,name)=>{if(name.toLowerCase()!=='set-cookie')response.headers.set(name,value)});
@@ -17,16 +19,17 @@ export async function POST(request:Request){
  const done=(value:any,status=200)=>withAuthHeaders(json(value,status),responseHeaders,setCookies);
  try{
   if(!authConfigured())return done({error:'O cadastro por e-mail ainda não está disponível. Seu acesso atual foi mantido.'},503);
-  const auth=serverAuthForRequest(request);if(!auth)return done({error:'A autenticação ainda não está configurada.'},503);
+  const b:any=JSON.parse(await boundedBody(request,8192)),rememberMe=b.rememberMe===true||b.rememberMe==='on';
+  const auth=serverAuthForRequest(request,['login','google'].includes(b.action)?rememberMe:undefined);if(!auth)return done({error:'A autenticação ainda não está configurada.'},503);
   responseHeaders=auth.responseHeaders;setCookies=auth.setCookies;
-  const client=auth.client,b:any=JSON.parse(await boundedBody(request,8192));
+  const client=auth.client;
   const email=String(b.email||'').trim().toLowerCase();
   if(['signup','login','recover','resend'].includes(b.action)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return done({error:'Informe um e-mail válido.'},400);
   if(['signup','login','password'].includes(b.action)&&(typeof b.password!=='string'||b.password.length>128||b.password.length<(b.action==='login'?1:12)))return done({error:'Use uma senha com pelo menos 12 caracteres.'},400);
   if(b.action==='google'){
    const {data,error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:new URL('/auth/callback?next=/',request.url).href,queryParams:{prompt:'select_account'},skipBrowserRedirect:true}});
    if(error||!data.url)return done({error:'Não foi possível iniciar o acesso pelo Google. Confira se o Google está habilitado no provedor de autenticação.'},400);
-   return done({url:data.url});
+   return withRememberCookie(done({url:data.url}),request,rememberMe);
   }
   if(b.action==='signup'){
    const fields=profileFields(b);const {error}=await client.auth.signUp({email,password:b.password,options:{data:{name:fields.name,phone:fields.phone},emailRedirectTo:new URL('/auth/callback',request.url).href}});
@@ -36,7 +39,7 @@ export async function POST(request:Request){
   if(b.action==='login'){
    const {data,error}=await client.auth.signInWithPassword({email,password:b.password});
    if(error||!data.user?.email_confirmed_at){if(!error)await client.auth.signOut({scope:'local'});return done({error:'Não foi possível entrar. Confira seus dados e a confirmação do e-mail.'},400);}
-   return done({next:'/'});
+   return withRememberCookie(done({next:'/'}),request,rememberMe);
   }
   if(b.action==='recover'){
    const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:new URL('/auth/callback?next=/nova-senha',request.url).href});
@@ -54,7 +57,7 @@ export async function POST(request:Request){
    const updated=await client.auth.updateUser({password:b.password});
    if(updated.error)return done({error:'Não foi possível atualizar a senha. Solicite outro link e tente novamente.'},400);
    await client.auth.signOut({scope:'global'});
-   return done({message:'Senha atualizada. Entre novamente com a nova senha.',next:'/entrar'});
+   return withRememberCookie(done({message:'Senha atualizada. Entre novamente com a nova senha.',next:'/entrar'}),request,false);
   }
   return done({error:'Ação inválida.'},400);
  }catch{return done({error:'Não foi possível concluir a solicitação. Tente novamente.'},400);}
