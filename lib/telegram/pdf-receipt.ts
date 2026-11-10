@@ -27,8 +27,20 @@ export function parsePdfReceiptText(text:string):any{
  return {extraction:'pdf_text',draft:{store:title,date:date||'',total,discount:0,extra:0,items:[],fiscalKey:null,proof:true,type:'expense'},reason:`Valor identificado no PDF: R$ ${total.toFixed(2).replace('.',',')}. Confira a descrição, a data e se é receita ou despesa antes de confirmar.`,requiresReview:true};
 }
 
-export async function extractPdfReceipt(bytes:Uint8Array):Promise<any>{
- if(bytes.byteLength>10485760)return {extraction:'too_large',reason:'PDF maior que 10 MB. Preencha os dados manualmente.'};
+export function parsePdfFinancialText(text:string):any{
+ const lines=text.replace(/\u00a0/g,' ').split(/\r?\n/).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean),plain=normalize(text);
+ const coupon=/nfc-?e|cupom fiscal|danfe/.test(plain),boleto=/boleto|linha digitavel|ficha de compensacao/.test(plain)&&!/comprovante.*pagamento/.test(plain);
+ const labels=[/^(?:valor a pagar|valor pago|total pago|valor cobrado)\b/,/^(?:valor do documento|valor total|total\s*(?:r\$|:|$))/,valueLabel];
+ let found:number[]=[];
+ for(const label of labels){for(let i=0;i<lines.length;i++)if(label.test(normalize(lines[i]))){let values=amounts(lines[i]);if(!values.length&&/^(?:r\$\s*)?[\d.,\s]+$/i.test(lines[i+1]||''))values=amounts(lines[i+1]);found.push(...values);}if(found.length)break;}
+ if(!found.length&&/comprovante|pix|pagamento/.test(plain))for(const line of lines)if(/r\$/i.test(line))found.push(...amounts(line));
+ const unique=[...new Set(found.map(v=>Math.round(v*100)))];if(unique.length!==1)return {extraction:'financial_unreadable',reason:unique.length?'Há valores diferentes no documento. Complete o total em Pendências.':'Não consegui identificar um valor único. O arquivo foi salvo em Pendências.'};
+ const preferred:string[]=[];for(let i=0;i<lines.length;i++)if(boleto?/vencimento/i.test(lines[i]):/^(?:data|emissao|pagamento realizado|realizado em)/i.test(normalize(lines[i]))){const d=dateValue(lines[i])||dateValue(lines[i+1]||'');if(d)preferred.push(d);}const dates=preferred.length?preferred:lines.map(dateValue).filter(Boolean);const when=[...new Set(dates)];
+ return {extraction:'financial_total',paid:!boleto,category:coupon?'Alimentação':'Outros',draft:{store:(lines.find(l=>/comprovante|cupom|boleto/i.test(l))||lines[0]||'Documento recebido').slice(0,120),date:when.length===1?when[0]:'',total:unique[0]/100,proof:true,type:/pix recebido|transferencia recebida|recebimento de pix/.test(plain)?'income':'expense',...(/\bpix\b/.test(plain)?{paymentMethod:'Pix'}:{}),items:[]},reason:'Confira o valor e a data se algum dado estiver ausente.'};
+}
+
+export async function extractPdfReceipt(bytes:Uint8Array,totalsOnly=false):Promise<any>{
+ if(bytes.byteLength>20*1024*1024)return {extraction:'too_large',reason:'PDF maior que 20 MB. Preencha os dados manualmente.'};
  let pdf:Awaited<ReturnType<typeof getDocumentProxy>>|undefined;
  let timer:ReturnType<typeof setTimeout>|undefined;
  try{
@@ -41,7 +53,7 @@ export async function extractPdfReceipt(bytes:Uint8Array):Promise<any>{
     for(const item of content.items){if(!('str' in item))continue;const y=item.transform[5];if(lastY!==undefined&&Math.abs(y-lastY)>3&&line){lines.push(line);line=''}line+=(line?' ':'')+item.str;lastY=y;length+=item.str.length;if(length>200000)throw Error('too_much_text');if(item.hasEOL&&line){lines.push(line);line='';lastY=undefined}}
     if(line)lines.push(line);page.cleanup();
    }
-   return parsePdfReceiptText(lines.join('\n'));
+   return totalsOnly?parsePdfFinancialText(lines.join('\n')):parsePdfReceiptText(lines.join('\n'));
   })();
   return await Promise.race([operation,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('timeout')),10000)})]);
  }catch{return {extraction:'unreadable',reason:'Não foi possível ler o texto deste PDF. Ele pode estar digitalizado, protegido por senha ou fora dos limites de leitura. Preencha os dados manualmente.'}}

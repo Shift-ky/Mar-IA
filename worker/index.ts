@@ -1,4 +1,5 @@
 import {webhook,jobs} from "../lib/telegram/service";
+import {webhook as evolutionWebhook,bridge as evolutionBridge} from '../lib/evolution/service';
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
@@ -6,6 +7,8 @@ import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 const worker = {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
     const pathname=new URL(request.url).pathname;
+    if(pathname==='/api/evolution/webhook')return evolutionWebhook(request,env);
+    if(pathname==='/api/evolution/bridge')return evolutionBridge(request,env);
     if(pathname==='/api/whatsapp'||pathname.startsWith('/api/whatsapp/'))return Response.json({error:'WhatsApp desativado. Use o Telegram.'},{status:410});
     if(pathname==='/api/telegram/webhook')return webhook(request,env,ctx);
     if(pathname==='/api/telegram/jobs')return jobs(request,env,ctx);

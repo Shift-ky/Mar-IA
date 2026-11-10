@@ -1,0 +1,8 @@
+{
+  "name": "mar-ia-whatsapp-bridge",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "tesseract.js": "7.0.0"
+  }
+}

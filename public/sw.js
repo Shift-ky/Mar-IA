@@ -1,8 +1,9 @@
 /* Generated with the application assets: no network bootstrap is needed on restart. */
-const PRECACHE = {"version":"56577898d001","files":["/offline/","/offline/assets/index-BLlYpZzA.js","/offline/assets/index-CCxmQvjU.css","/manifest.webmanifest","/brand/mar-app-icon.png","/brand/mar-symbol.png","/brand/waves.svg","/fonts/Montserrat-300.woff","/fonts/Montserrat-400.woff","/fonts/Montserrat-500.woff","/fonts/Montserrat-600.woff","/fonts/Montserrat-700.woff","/fonts/Montserrat-800.woff"]};
+const PRECACHE = {"version":"0aaebfb5a927","release":"2.31","files":["/offline/","/offline/assets/index-OMrBVB3f.css","/offline/assets/index-hj8Udd-p.js","/manifest.webmanifest","/brand/mar-app-icon.png","/brand/mar-symbol.png","/brand/waves.svg","/fonts/Montserrat-300.woff","/fonts/Montserrat-400.woff","/fonts/Montserrat-500.woff","/fonts/Montserrat-600.woff","/fonts/Montserrat-700.woff","/fonts/Montserrat-800.woff"]};
 const CACHE = 'mar-shell-v2-' + PRECACHE.version;
 const SHELL = '/offline/';
-const APP_ROUTES = new Set(['/', '/entrar', '/nova-senha', '/offline', '/offline/', '/offline/index.html']);
+// Authentication pages must always reach the server, never the offline app shell.
+const APP_ROUTES = new Set(['/','/offline','/offline/','/offline/index.html']);
 async function stored(path) {
   const current = await caches.open(CACHE);
   const hit = await current.match(path);
@@ -22,6 +23,7 @@ async function loadAsset(path) {
   if (path === SHELL) {
     const text = await response.text();
     if (!text.includes('mar-offline-shell')) throw Error('Sessão necessária ou aplicação indisponível para preparar o modo offline.');
+    if ([...text.matchAll(/(?:src|href)="(\/offline\/assets\/[^"]+)"/g)].some(match=>!PRECACHE.files.includes(match[1]))) throw Error('Os arquivos da atualização ainda não estão consistentes. Tente novamente.');
     return new Response(text, {status:200, headers:{'Content-Type':'text/html; charset=utf-8'}});
   }
   if (/\.(js|css)$/.test(path) && (response.headers.get('content-type') || '').includes('text/html')) throw Error('A hospedagem retornou uma página no lugar de um recurso offline.');
@@ -37,13 +39,14 @@ self.addEventListener('activate', event => event.waitUntil((async () => {
   const old = (await caches.keys()).filter(k => k.startsWith('mar-shell-') && k !== CACHE);
   for (const key of old.slice(0, -1)) await caches.delete(key);
   await self.clients.claim();
+  for (const client of await self.clients.matchAll({type:'window'})) client.postMessage({type:'MAR_UPDATE_READY',version:PRECACHE.version,release:PRECACHE.release});
 })()));
 self.addEventListener('message', event => {
   if (event.data === 'READY') event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     const missing = [];
     for (const path of PRECACHE.files) if (!await cache.match(path)) missing.push(path);
-    event.ports[0]?.postMessage({ready:!missing.length, version:PRECACHE.version, missing});
+    event.ports[0]?.postMessage({ready:!missing.length, version:PRECACHE.version, release:PRECACHE.release, missing});
   })());
 });
 self.addEventListener('fetch', event => {

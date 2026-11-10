@@ -1,0 +1,27 @@
+import {build} from '../node_modules/.pnpm/esbuild@0.28.0/node_modules/esbuild/lib/main.js';
+import assert from 'node:assert/strict';
+
+await build({stdin:{contents:"export {validateGoal,goalProgress} from './lib/goals';export {deleteWallet} from './lib/wallet-deletion';export {canTransferWallet} from './lib/wallets';",resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',outfile:'work/goal-configuration.mjs'});
+const {validateGoal,goalProgress,deleteWallet,canTransferWallet}=await import('../work/goal-configuration.mjs');
+const records=[{id:'wallet-reserva',kind:'wallet',name:'Reserva',currency:'BRL'},{id:'wallet-dollar',kind:'wallet',name:'Dólares',currency:'USD'},{id:'wallet-euro',kind:'wallet',name:'Euros',currency:'EUR'},{id:'cash',kind:'walletMovement',wallet:'Reserva',direction:'in',amount:500,date:'2026-11-01'},{id:'usd',kind:'walletMovement',wallet:'Dólares',direction:'in',amount:20,date:'2026-11-01'},{id:'eur',kind:'walletMovement',wallet:'Euros',direction:'in',amount:10,date:'2026-11-01'}];
+const goal=validateGoal({name:'Viagem',amount:10000,saved:0,wallets:['Dinheiro','Reserva','Dinheiro'],deadline:'2027-06-30'},records);
+assert.deepEqual(goal.wallets,['Dinheiro','Reserva']);
+assert.equal(goal.deadline,'2027-06-30');
+assert.equal(validateGoal({name:'Fundo',amount:2500,wallets:['Dinheiro'],deadline:null},records).deadline,null);
+assert.throws(()=>validateGoal({name:'Sem carteira',amount:100,wallets:[]},records),/carteiras/);
+assert.throws(()=>validateGoal({name:'Carteira removida',amount:100,wallets:['Reserva inexistente']},records),/carteiras/);
+assert.throws(()=>validateGoal({name:'Data inválida',amount:100,wallets:['Dinheiro'],deadline:'2027-02-30'},records),/Data inválida/);
+assert.equal(validateGoal({name:'Meta antiga',amount:100},records).wallets,undefined);
+assert.equal(canTransferWallet([...records, {id:'goal',kind:'goal',name:'Viagem',wallets:['Reserva']}],'Reserva'),false);
+const migrated=deleteWallet([...records,{id:'goal',kind:'goal',name:'Viagem',amount:10000,wallets:['Reserva','Dinheiro']}],'Reserva','marker');
+assert.deepEqual(migrated.find(r=>r.kind==='goal').wallets,['Dinheiro']);
+assert.equal(goalProgress({id:'goal',saved:0,amount:10000},[{id:'deposit',kind:'goalContribution',goalId:'goal',amount:100}]).accumulated,100);
+const fxGoal={id:'fx-goal',saved:0,amount:1000,wallets:['Reserva','Dólares','Euros']};
+const converted=goalProgress(fxGoal,records,{USD:{rate:5.5,date:'2026-10-31'},EUR:{rate:6,date:'2026-10-31'}});
+assert.equal(converted.walletValue,670);
+assert.equal(converted.accumulated,670);
+assert.deepEqual(converted.missingCurrencies,[]);
+assert.equal(goalProgress(fxGoal,records,{USD:{rate:5.5},EUR:{rate:6}}).walletTotals.length,3);
+assert.equal(goalProgress({...fxGoal, saved:700},records,{USD:{rate:5.5},EUR:{rate:6}}).accumulated,700);
+assert.deepEqual(goalProgress(fxGoal,records,{USD:{rate:5.5}}).missingCurrencies,['EUR']);
+console.log('PASS: metas aceitam uma ou várias carteiras, prazo ou prazo indefinido; dados inválidos são recusados e referências acompanham a exclusão de carteira.');

@@ -13,7 +13,7 @@ A integração ativa passa a ser Telegram. As rotas `/api/whatsapp` e seus webho
 
 O GitHub Pages publica apenas a interface. **Não executa o bot, login, banco de dados ou sincronização.** Publique o Worker da aplicação com DB (D1), BUCKET (R2 privado) e autenticação já configurados antes de ativar o Telegram. Não configure um webhook apontando para `github.io`.
 
-No servidor, registre o webhook pela Bot API com `setWebhook`, usando `url: https://SEU-SERVIDOR/api/telegram/webhook`, `secret_token` igual ao segredo do servidor e `allowed_updates: ["message"]`. Não use `drop_pending_updates` para evitar perder mensagens. Verifique `getWebhookInfo` e teste uma conversa privada antes de considerar a ativação concluída. O token não deve aparecer em logs, histórico do terminal ou capturas de tela.
+No servidor, registre o webhook pela Bot API com `setWebhook`, usando `url: https://SEU-SERVIDOR/api/telegram/webhook`, `secret_token` igual ao segredo do servidor e `allowed_updates: ["message", "callback_query"]`. Não use `drop_pending_updates` para evitar perder mensagens. Verifique `getWebhookInfo` e teste uma conversa privada antes de considerar a ativação concluída. O token não deve aparecer em logs, histórico do terminal ou capturas de tela.
 
 Configure uma tarefa no servidor a cada minuto para POST `/api/telegram/jobs`, com JSON `{ "at": <timestamp em milissegundos> }` assinado por HMAC SHA-256 usando `TELEGRAM_JOB_SECRET`, no cabeçalho `X-Mar-Job-Signature: sha256=<hex>`. Isso permite retomar filas após falhas transitórias. O webhook também dispara o processamento imediatamente.
 
