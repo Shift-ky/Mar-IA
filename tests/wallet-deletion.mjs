@@ -10,3 +10,18 @@ assert.equal(walletBalances(after).Dinheiro,before.Dinheiro+before.Reserva);asse
 assert(!walletNames(deleteWallet([],'Vale-alimentação','default-marker')).includes('Vale-alimentação'));assert.throws(()=>deleteWallet(records,'Dinheiro','no'));assert.deepEqual(deleteWallet(after,'Reserva','again'),after);
 const view=project({family:'f',email:'qa',records},[{action:'walletDelete',family:'f',wallet:'Reserva',entityId:'offline-marker'}]);assert(!walletNames(view.records).includes('Reserva'));assert.equal(walletBalances(view.records).Dinheiro,before.Dinheiro+before.Reserva);
 console.log('PASS: saldos somados, histórico preservado, carteira padrão removida, proteção de Dinheiro, repetição segura e projeção offline.');
+
+
+const edited = project({family:'f',email:'qa',records}, [{
+  action:'save',kind:'wallet',id:'w',family:'f',
+  data:{name:'Viagem',currency:'USD'},fxRates:{USD:5},
+}]);
+assert.equal(walletBalances(edited.records).Viagem,before.Reserva/5);
+assert.equal(walletBalances(edited.records).Dinheiro,before.Dinheiro);
+assert.equal(edited.records.find(r=>r.id==='m').amount,100);
+assert.equal(edited.records.find(r=>r.id==='m').currency,'BRL');
+assert.equal(edited.records.find(r=>r.id==='t').paymentMethod,'Viagem');
+assert.equal(edited.records.find(r=>r.id==='x').toWallet,'Viagem');
+assert.equal(edited.records.find(r=>r.id==='p').fromWallet,'Viagem');
+assert.equal(edited.records.find(r=>r.id==='r').paymentMethod,'Viagem');
+console.log('PASS: renomeação e mudança de moeda preservam saldos, lançamentos e transferências na projeção offline.');
