@@ -1,4 +1,5 @@
 import {walletNames,walletBalances,walletDefinition} from './wallets';
+import {recurringOccurrences} from './recurring';
 const cents=(v:any)=>Math.round(Number(v||0)*100);
 const sum=(rows:any[])=>rows.reduce((n,r)=>n+cents(r.amount),0);
 export const goalToday=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'});
@@ -10,7 +11,7 @@ export function validateSavingsPlan(d:any){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(d?
 export function goalProgress(goal:any,records:any[],rates:Record<string,{rate:number;date?:string}>={}){const contributions=records.filter(r=>r.kind==='goalContribution'&&r.goalId===goal.id),tracked=cents(goal.saved)+sum(contributions),balances=walletBalances(records),names=(goal.wallets||[goal.sourcePocketWalletName]).filter((name:string)=>name&&walletNames(records).includes(name)),byCurrency=new Map<string,{currency:string;amount:number;converted:number;rateDate?:string;missing:boolean}>();for(const name of names){const currency=walletDefinition(records,name).currency,amount=Math.max(0,Number(balances[name]||0)),quote=currency==='BRL'?{rate:1}:rates[currency],line=byCurrency.get(currency)||{currency,amount:0,converted:0,rateDate:quote?.date,missing:!quote};line.amount+=amount;if(quote&&Number.isFinite(quote.rate)&&quote.rate>0){line.converted+=amount*quote.rate;line.rateDate=quote.date||line.rateDate;line.missing=false;}else line.missing=true;byCurrency.set(currency,line);}const walletTotals=[...byCurrency.values()],walletValue=cents(walletTotals.reduce((n,line)=>n+line.converted,0)),accumulated=Math.max(tracked,walletValue),target=cents(goal.amount),remaining=Math.max(0,target-accumulated),percent=target>0?Math.min(100,accumulated/target*100):0;return {contributions,accumulated:accumulated/100,tracked:tracked/100,walletValue:walletValue/100,walletTotals,missingCurrencies:walletTotals.filter(line=>line.missing).map(line=>line.currency),remaining:remaining/100,percent,remainingPercent:target>0?Math.max(0,remaining/target*100):0};}
 export function savingsForecast(records:any[],month:string,today=goalToday()){
  const start=month+'-01',[year,m]=month.split('-').map(Number);const end=new Date(Date.UTC(year,m,0)).toISOString().slice(0,10),cutoff=today<start?start:today>end?end:today;
- const tx=records.filter(r=>r.kind==='transaction'&&r.date&&Number.isFinite(Number(r.amount))),income=tx.filter(r=>r.type==='income'),expense=tx.filter(r=>r.type==='expense');
+ const tx=records.filter(r=>r.kind==='transaction'&&r.date&&!r.voided&&Number.isFinite(Number(r.amount))),income=tx.filter(r=>r.type==='income'),expense=tx.filter(r=>r.type==='expense');
  const goalIds=new Set(records.filter(r=>r.kind==='goal').map(r=>r.id));const deposits=records.filter(r=>r.kind==='goalContribution'&&goalIds.has(r.goalId));
  const legacy=records.filter(r=>r.kind==='goal').reduce((n,r)=>n+cents(r.saved),0);
  const paidIncome=sum(income.filter(r=>r.paid&&r.date<=cutoff)),paidExpense=sum(expense.filter(r=>r.paid&&r.date<=cutoff)),reserved=legacy+sum(deposits.filter(r=>r.date<=cutoff));
@@ -19,11 +20,22 @@ export function savingsForecast(records:any[],month:string,today=goalToday()){
  const upcomingIncome=sum(income.filter(r=>r.date>=start&&r.date<=end&&(!r.paid||r.date>cutoff)));
  const paidThisMonth=sum(expense.filter(r=>r.date>=start&&r.date<=cutoff&&r.paid));
  const bills=sum(expense.filter(r=>r.date>=start&&r.date<=end&&!r.paid));
- const forecastIncome=sum(income.filter(r=>r.date>=start&&r.date<=end));
- const forecastPaidExpenses=sum(expense.filter(r=>r.date>=start&&r.date<=end&&r.paid));
- const openBills=sum(expense.filter(r=>r.date<=end&&!r.paid));
- const forecastExpenses=forecastPaidExpenses+openBills;
- const forecastSavings=(forecastIncome-forecastExpenses)/100;
+ const salary=(row:any)=>[row.category,row.name].some(label=>/^sal[áa]rio$/i.test(String(label||'').trim()));
+ const existingIds=new Set(records.map(row=>row.id));
+ const recordedOccurrences=new Set(records.filter(row=>row.kind==='transaction'&&row.recurringId)
+  .map(row=>row.recurringId+'|'+row.date));
+ const skipped=new Set(records.filter(row=>row.kind==='recurringSkip').map(row=>row.transactionId));
+ const scheduled=records.filter(row=>row.kind==='recurringBill'&&['expense','income'].includes(row.type))
+  .flatMap(rule=>recurringOccurrences(rule,end).filter(({id,data})=>
+   data.date>=start&&!existingIds.has(id)&&!skipped.has(id)&&!recordedOccurrences.has(rule.id+'|'+data.date)
+  ).map(({data})=>data));
+ const forecastCash=cents(walletBalances(records.filter(row=>!row.date||row.date<=(today<end?today:end))).Dinheiro);
+ const forecastIncome=sum(income.filter(row=>!row.paid&&row.date>=start&&row.date<=end&&salary(row)))+
+  sum(scheduled.filter(row=>row.type==='income'&&salary(row)));
+ const openBills=sum(expense.filter(row=>row.date<=end&&!row.paid));
+ const scheduledExpenses=sum(scheduled.filter(row=>row.type==='expense'));
+ const forecastExpenses=openBills+scheduledExpenses;
+ const forecastSavings=(forecastCash+forecastIncome-forecastExpenses)/100;
  const plan=records.find(r=>r.kind==='savingsPlan'&&r.month===month);
  // Pending expenses already entered in Contas a pagar are the source of the
  // remaining-spend estimate. Legacy extraExpenses values are intentionally
@@ -32,5 +44,5 @@ export function savingsForecast(records:any[],month:string,today=goalToday()){
  const buffer=plan?cents(plan.spendingReserve):null;
  const ready=!!plan&&month===today.slice(0,7);
  const leftover=ready?cash-bills-buffer!:null;
- return {received:received/100,upcomingIncome:upcomingIncome/100,paidExpenses:paidThisMonth/100,bills:bills/100,forecastIncome:forecastIncome/100,forecastPaidExpenses:forecastPaidExpenses/100,openBills:openBills/100,forecastExpenses:forecastExpenses/100,forecastSavings,cash:cash/100,reserved:reserved/100,monthDeposits:sum(deposits.filter(r=>r.date>=start&&r.date<=end))/100,average:null,estimatedExtra:null,extra:extra/100,buffer:buffer===null?null:buffer/100,ready,availableNow:leftover===null?null:Math.max(0,leftover)/100,projected:leftover===null?null:(leftover+upcomingIncome)/100,shortfall:leftover===null?null:Math.max(0,-leftover)/100,plan,hasIncome:forecastIncome>0,past:month<today.slice(0,7),future:month>today.slice(0,7)};
+ return {received:received/100,upcomingIncome:upcomingIncome/100,paidExpenses:paidThisMonth/100,bills:bills/100,forecastIncome:forecastIncome/100,forecastCash:forecastCash/100,scheduledExpenses:scheduledExpenses/100,openBills:openBills/100,forecastExpenses:forecastExpenses/100,forecastSavings,cash:cash/100,reserved:reserved/100,monthDeposits:sum(deposits.filter(r=>r.date>=start&&r.date<=end))/100,average:null,estimatedExtra:null,extra:extra/100,buffer:buffer===null?null:buffer/100,ready,availableNow:leftover===null?null:Math.max(0,leftover)/100,projected:leftover===null?null:(leftover+upcomingIncome)/100,shortfall:leftover===null?null:Math.max(0,-leftover)/100,plan,hasIncome:forecastIncome>0,past:month<today.slice(0,7),future:month>today.slice(0,7)};
 }
