@@ -1,7 +1,17 @@
-import {walletsForAutomation} from './wallets';
+import {canUseWallet,walletDefinition,walletNames} from './wallets';
+
+export function recurringWallets(records:any[],type:string) {
+ return walletNames(records).filter(name=>{
+  if(canUseWallet(records,name,'recurring'))return true;
+  if(type!=='income')return false;
+  const wallet=walletDefinition(records,name);
+  return wallet.type==='beneficio'&&wallet.currency==='BRL';
+ });
+}
+
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'});
 function validDate(value:any){return typeof value==='string'&&/^20\d{2}-\d{2}-\d{2}$/.test(value)&&!isNaN(Date.parse(value))&&new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value;}
-export function validateRecurring(raw:any,records:any[]=[]){const name=String(raw?.name||'').trim(),amount=Number(raw?.amount);if(!name||name.length>120||!Number.isFinite(amount)||amount<=0||amount>1e9||Math.abs(amount*100-Math.round(amount*100))>.00001)throw Error('Informe descrição e valor positivo com até duas casas decimais.');if(!['income','expense','transfer'].includes(raw.type)||!validDate(raw.startDate)||raw.endDate!==null&&(!validDate(raw.endDate)||raw.endDate<raw.startDate))throw Error('Confira o tipo e as datas de início e fim.');const paymentMethod=raw.type==='transfer'?undefined:String(raw.paymentMethod||'Dinheiro');if(raw.type!=='transfer'&&!walletsForAutomation(records,'recurring').includes(paymentMethod!))throw Error('Escolha uma carteira habilitada para contas fixas.');const category=String(raw.category||(raw.type==='expense'?'Contas fixas':'Receita fixa')).trim();if(!category||category.length>100)throw Error('Informe uma categoria de até 100 caracteres.');return {name,amount,...(raw.type!=='transfer'?{category}:{}),...(paymentMethod?{paymentMethod}:{}),type:raw.type,startDate:raw.startDate,endDate:raw.endDate,autoReceive:raw.type==='income'&&raw.autoReceive===true,...(raw.type==='transfer'?{fromWallet:'Dinheiro',toWallet:'Combustível'}:{})};}
+export function validateRecurring(raw:any,records:any[]=[]){const name=String(raw?.name||'').trim(),amount=Number(raw?.amount);if(!name||name.length>120||!Number.isFinite(amount)||amount<=0||amount>1e9||Math.abs(amount*100-Math.round(amount*100))>.00001)throw Error('Informe descrição e valor positivo com até duas casas decimais.');if(!['income','expense','transfer'].includes(raw.type)||!validDate(raw.startDate)||raw.endDate!==null&&(!validDate(raw.endDate)||raw.endDate<raw.startDate))throw Error('Confira o tipo e as datas de início e fim.');const paymentMethod=raw.type==='transfer'?undefined:String(raw.paymentMethod||'Dinheiro');if(raw.type!=='transfer'&&!recurringWallets(records,raw.type).includes(paymentMethod!))throw Error('Escolha uma carteira habilitada para contas fixas.');const category=String(raw.category||(raw.type==='expense'?'Contas fixas':'Receita fixa')).trim();if(!category||category.length>100)throw Error('Informe uma categoria de até 100 caracteres.');return {name,amount,...(raw.type!=='transfer'?{category}:{}),...(paymentMethod?{paymentMethod}:{}),type:raw.type,startDate:raw.startDate,endDate:raw.endDate,autoReceive:raw.type==='income'&&raw.autoReceive===true,...(raw.type==='transfer'?{fromWallet:'Dinheiro',toWallet:'Combustível'}:{})};}
 export function recurringOccurrences(rule:any,reference=today()){
  if(rule.disabled)return [];
  const [year,month,day]=rule.startDate.split('-').map(Number);const end=rule.endDate&&rule.endDate<reference?rule.endDate:reference;const rows:any[]=[];

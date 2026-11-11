@@ -14,7 +14,13 @@ for(const paymentMethod of ['Dinheiro','Vale-alimentação','Vale-refeição']){
  assert(recurringOccurrences({...saved,id:'income-wallet'},'2026-02-28').every(r=>r.data.paymentMethod===paymentMethod));
 }
 assert.throws(()=>validateRecurring({...income,paymentMethod:'Pix'}));
-assert(!('paymentMethod' in validateRecurring({...rule,paymentMethod:'Dinheiro'})));
+assert.equal(validateRecurring({...rule,paymentMethod:'Dinheiro'}).paymentMethod,'Dinheiro');
+const benefit={id:'benefit-wallet',kind:'wallet',name:'Auxilio',type:'beneficio',currency:'BRL',showInRecurring:false};
+const benefitIncome=validateRecurring({...income,paymentMethod:benefit.name},[benefit]);
+assert.equal(benefitIncome.paymentMethod,benefit.name);
+assert(recurringOccurrences({...benefitIncome,id:'benefit-income'},'2026-02-28').every(row=>row.data.paymentMethod===benefit.name));
+assert.throws(()=>validateRecurring({...rule,paymentMethod:benefit.name},[benefit]));
+assert.throws(()=>validateRecurring({...income,paymentMethod:benefit.name},[{...benefit,currency:'USD'}]));
 console.log('PASS: recurring income wallet selection validated and copied to every occurrence.');
 
 for(const type of ['expense','income','transfer']){
