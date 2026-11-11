@@ -16,7 +16,7 @@ async function context(family:string,request:Request){
 export async function GET(req:Request){
  try{
   const family=new URL(req.url).searchParams.get('family')||'',c=await context(family,req);
-  const prefix=`sync-issue:${family}:`,rows=await c.db.prepare('SELECT key,value FROM settings WHERE substr(key,1,?)=? ORDER BY key').bind(prefix.length,prefix).all<any>();
+  const prefix=`sync-issue:${family}:`,rows=await c.db.prepare("SELECT key,value FROM settings WHERE substr(key,1,?)=? AND NOT EXISTS (SELECT 1 FROM sync_operations WHERE id=json_extract(settings.value,'$.operationId') AND user=json_extract(settings.value,'$.user')) ORDER BY key").bind(prefix.length,prefix).all<any>();
   const issues=rows.results.map((row:any)=>{try{return JSON.parse(row.value)}catch{return null}}).filter((issue:any)=>issue&&(c.admin||issue.user===c.user.userId));
   return json({issues});
  }catch(e:any){return json({error:e.message},401);}
@@ -30,7 +30,11 @@ export async function POST(req:Request){
   if(!member)return json({error:'Sem acesso a esta família.'},403);
   if(body.action==='submit'){
    const op=body.operation;if(!op||op.account!==user.userId||op.family!==family||!validId(op.operationId))return json({error:'Alteração inválida para análise.'},400);
-   const key=`sync-issue:${family}:${op.operationId}`,value={family,operationId:op.operationId,user:user.userId,email:user.email.toLowerCase(),state:'pending',error:String(body.error||'Falha ao sincronizar.').slice(0,1000),status:Number.isInteger(body.status)?body.status:null,operation:{action:op.action,kind:op.kind,id:op.id,entityId:op.entityId,data:op.data,createdAt:op.createdAt},createdAt:new Date().toISOString()};
+   const status=body.status;
+   if(!Number.isInteger(status)||status<400||status>=500||[401,408,425,429].includes(status)||typeof body.error!=='string'||!body.error.trim())return json({error:'A análise exige um erro de sincronização.'},400);
+   const committed=await db.prepare('SELECT id FROM sync_operations WHERE id=? AND user=?').bind(op.operationId,user.userId).first();
+   if(committed)return json({ok:true,alreadySynced:true});
+   const key=`sync-issue:${family}:${op.operationId}`,value={family,operationId:op.operationId,user:user.userId,email:user.email.toLowerCase(),state:'pending',error:String(body.error||'Falha ao sincronizar.').slice(0,1000),status,operation:{action:op.action,kind:op.kind,id:op.id,entityId:op.entityId,data:op.data,createdAt:op.createdAt},createdAt:new Date().toISOString()};
    await db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,JSON.stringify(value)).run();
    return json({ok:true});
   }
