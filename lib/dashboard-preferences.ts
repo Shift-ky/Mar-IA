@@ -22,6 +22,14 @@ export const defaultDashboardPreferences:DashboardPreferences={activeId:'princip
  {id:'carteiras',name:'Carteiras',columns:2,widgets:[widget('saldos','wallets','Saldo por carteira',2,'medium','#0ea5e9')]},
  {id:'objetivos',name:'Objetivos',columns:2,widgets:[widget('metas','goals','Metas financeiras',2,'medium','#eab308')]},
 ]}]};
+export const goalChartOptions = [
+ {value:'bars',label:'Barras'},
+ {value:'donut',label:'Rosca'},
+ {value:'pie',label:'Pizza'},
+] as const;
+export function goalChart(chart: DashboardWidget['chart']) {
+ return chart==='donut'||chart==='pie'?chart:'bars';
+}
 const widths=[1,2,3,4];
 export function normalizeDashboardPreferences(value:unknown):DashboardPreferences{
  const raw=value&&typeof value==='object'?value as any:{};

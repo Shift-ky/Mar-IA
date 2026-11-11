@@ -1,14 +1,32 @@
 'use client';
-import {useMemo,useState,useEffect,useRef} from 'react';
+import {useMemo,useState,useEffect,useRef,type CSSProperties} from 'react';
 import {CalendarDays,Wallet,ArrowUpRight,TrendingUp,ChevronRight} from 'lucide-react';
 import {Area,Bar,BarChart,CartesianGrid,Cell,ComposedChart,Line,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {dashboardSummary} from '../lib/dashboard-summary';
 import {walletNames,walletsForDisplay,walletDefinition} from '../lib/wallets';
-import {type DashboardPreferences,type DashboardWidget} from '../lib/dashboard-preferences';
+import {goalChart,goalChartOptions,type DashboardPreferences,type DashboardWidget} from '../lib/dashboard-preferences';
 const money=(v:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const labels:Record<string,string>={'Dinheiro':'Dinheiro','Vale-alimentação':'Alimentação','Vale-refeição':'Refeição','Combustível':'Combustível'};
 const chartColors=['#3b82f6','#f97316','#22c55e','#a855f7','#ef4444','#14b8a6','#eab308','#ec4899','#64748b','#06b6d4'];
 const monthLabel=(value:string)=>{const [year,month]=value.split('-').map(Number);return new Date(year,month-1,1).toLocaleDateString('pt-BR',{month:'short'}).replace('.','');};
+const percentFormat = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
+type Goal = ReturnType<typeof dashboardSummary>['goals'][number];
+function GoalProgress({goal,chart}:{goal:Goal;chart:ReturnType<typeof goalChart>}){
+ const limit=goal.mode==='limit';
+ const percent=goal.amount>0?Math.max(0,goal.progress/goal.amount*100):0;
+ const progressText=percent>0&&percent<0.01?'< 0,01%':percentFormat.format(percent)+'%';
+ const style={'--goal-progress':Math.min(100,percent)+'%'} as CSSProperties;
+ return <section className={`goal-report-item goal-report-${chart}${limit&&percent>100?' goal-report-over':''}`}>
+  <div className="goal-report-label"><h4>{goal.name}</h4><strong>{progressText}</strong></div>
+  <div className="goal-report-plot" style={style} aria-hidden="true"><span/></div>
+  <dl className="goal-report-values">
+   <div><dt>{limit?'Gasto':'Guardado'}</dt><dd>{money(goal.progress)}</dd></div>
+   <div><dt>{limit?'Limite':'Meta'}</dt><dd>{money(goal.amount)}</dd></div>
+   <div><dt>{limit?(percent>100?'Acima do limite':'Disponível'):'Falta guardar'}</dt><dd>{money(limit&&percent>100?goal.progress-goal.amount:goal.remaining)}</dd></div>
+  </dl>
+ </section>;
+}
+
 function FitMoney({value}:{value:number}){
  const ref=useRef<HTMLElement>(null),text=money(value);
  useEffect(()=>{
@@ -42,6 +60,11 @@ export default function AnalyticsDashboard({snapshot,month,onMonthChange,onGoals
  const monthlyFlow=useMemo(()=>{const [y,m]=reference.split('-').map(Number);return Array.from({length:6},(_,index)=>{const d=new Date(y,m-1-(5-index),1),key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const rows=(snapshot?.records||[]).filter((r:any)=>r.kind==='transaction'&&r.paid&&!r.voided&&r.date?.startsWith(key));return {month:monthLabel(key),Entradas:rows.filter((r:any)=>r.type==='income').reduce((n:number,r:any)=>n+Number(r.amount||0),0),Saídas:rows.filter((r:any)=>r.type==='expense').reduce((n:number,r:any)=>n+Number(r.amount||0),0)};});},[snapshot?.records,reference]);
  if(!snapshot?.permissions?.view)return <section className="panel analytics-empty"><Wallet/><h2>Sem acesso aos dados da família</h2></section>;
  function selectView(id:string){onPreferencesChange({...preferences,activeId:id});}
+ function changeGoalChart(id:string,chart:ReturnType<typeof goalChart>){
+  onPreferencesChange({...preferences,views:preferences.views.map(view=>view.id!==active?.id?view:{
+   ...view,sections:view.sections.map(section=>({...section,widgets:section.widgets.map(widget=>widget.id===id?{...widget,chart}:widget)})),
+  })});
+ }
  function renderWidget(widget:DashboardWidget){
   const title=widget.title||'Caixa do painel';
   const value=widget.source==='balance'?data.balance:widget.source==='income'?data.received:widget.source==='expenses'?data.paidExpenses:widget.source==='bills'?data.bills:widget.source==='forecast'?data.forecast:null;
@@ -51,7 +74,21 @@ export default function AnalyticsDashboard({snapshot,month,onMonthChange,onGoals
   if(widget.source==='categories')return <article {...common}><div className="dashboard-box-heading"><div><h3>{title}</h3><small>Despesas pagas por categoria</small></div></div>{data.categories.length?<div className="dashboard-category-layout"><div className="dashboard-donut"><ResponsiveContainer width="100%" height="100%">{widget.chart==='bars'?<ComposedChart data={data.categories.slice(0,8)} layout="vertical" margin={{left:2,right:5,top:5,bottom:5}}><CartesianGrid stroke="var(--chart-grid)" horizontal={false}/><XAxis type="number" hide/><YAxis type="category" dataKey="name" width={78} tick={{fill:'var(--muted)',fontSize:8}} tickLine={false} axisLine={false}/><Tooltip formatter={(v:any)=>money(Number(v))} contentStyle={tooltip}/><Bar dataKey="value" radius={[0,4,4,0]}>{data.categories.slice(0,8).map((_:any,i:number)=><Cell key={i} fill={chartColors[i%chartColors.length]}/>)}</Bar></ComposedChart>:<PieChart><Pie data={data.categories} dataKey="value" nameKey="name" innerRadius={widget.chart==='donut'?48:0} outerRadius="82%" paddingAngle={2}>{data.categories.map((_:any,i:number)=><Cell key={i} fill={chartColors[i%chartColors.length]}/>)}</Pie><Tooltip formatter={(v:any)=>money(Number(v))} contentStyle={tooltip}/></PieChart>}</ResponsiveContainer></div><div className="dashboard-category-legend">{data.categories.map((category:any,i:number)=><div key={category.name}><span><i style={{background:chartColors[i%chartColors.length]}}/>{category.name}</span><strong>{money(category.value)}</strong></div>)}</div></div>:<div className="dashboard-widget-empty">Nenhuma despesa paga neste mês.</div>}</article>;
   if(widget.source==='cashflow'){const chart=widget.chart==='bars'?<BarChart data={monthlyFlow} margin={{top:8,right:8,bottom:0,left:0}}><CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="month" tick={{fill:'var(--muted)',fontSize:10}} tickLine={false} axisLine={false}/><YAxis tickFormatter={n=>Number(n).toLocaleString('pt-BR',{notation:'compact'})} width={42} tick={{fill:'var(--muted)',fontSize:9}} tickLine={false} axisLine={false}/><Tooltip formatter={(v:any)=>money(Number(v))} contentStyle={tooltip}/><Bar dataKey="Entradas" fill="#22c55e" radius={[4,4,0,0]}/><Bar dataKey="Saídas" fill="#ef4444" radius={[4,4,0,0]}/></BarChart>:<ComposedChart data={monthlyFlow} margin={{top:8,right:8,bottom:0,left:0}}><CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="month" tick={{fill:'var(--muted)',fontSize:10}} tickLine={false} axisLine={false}/><YAxis tickFormatter={n=>Number(n).toLocaleString('pt-BR',{notation:'compact'})} width={42} tick={{fill:'var(--muted)',fontSize:9}} tickLine={false} axisLine={false}/><Tooltip formatter={(v:any)=>money(Number(v))} contentStyle={tooltip}/>{widget.chart==='line'?<><Line dataKey="Entradas" stroke="#22c55e" strokeWidth={2}/><Line dataKey="Saídas" stroke="#ef4444" strokeWidth={2}/></>:<><Area dataKey="Entradas" stroke="#22c55e" fill="#22c55e" fillOpacity={.15}/><Area dataKey="Saídas" stroke="#ef4444" fill="#ef4444" fillOpacity={.12}/></>}</ComposedChart>;return <article {...common}><div className="dashboard-box-heading"><div><h3>{title}</h3><small>Entradas e saídas dos últimos seis meses</small></div></div>{monthlyFlow.some(row=>row.Entradas||row.Saídas)?<div className="dashboard-flow-chart"><ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer></div>:<div className="dashboard-widget-empty">Ainda não há movimentações registradas.</div>}</article>;}
   if(widget.source==='wallets')return <article {...common}><div className="dashboard-box-heading"><div><h3>{title}</h3><small>Saldo disponível por carteira</small></div></div><div className="dashboard-wallet-list">{walletsForDisplay(snapshot?.records||[]).map((wallet:string)=><div key={wallet}><span>{labels[wallet]||wallet}</span><strong>{Number(data.balances[wallet]||0).toLocaleString('pt-BR',{style:'currency',currency:walletDefinition(snapshot?.records||[],wallet).currency})}{walletDefinition(snapshot?.records||[],wallet).currency!=='BRL'&&<small className="wallet-brl-equivalent">{rates[walletDefinition(snapshot?.records||[],wallet).currency]?<>≈ {money((data.balances[wallet]||0)*rates[walletDefinition(snapshot?.records||[],wallet).currency].rate)} · {rates[walletDefinition(snapshot?.records||[],wallet).currency].date.split('-').reverse().join('/')}</>:'Cotação indisponível'}</small>}</strong></div>)}</div></article>;
-  return <article {...common}><div className="dashboard-box-heading"><div><h3>{title}</h3><small>Objetivos da família</small></div><button className="textbutton" onClick={onGoals} aria-label="Abrir metas"><ChevronRight size={17}/></button></div>{data.goals.length?data.goals.slice(0,5).map((goal:any)=><div className="dashboard-goal" key={goal.id}><div><strong>{goal.name}</strong><span>{goal.percent.toLocaleString('pt-BR',{maximumFractionDigits:0})}%</span></div><div className="dashboard-goal-progress"><i style={{width:goal.percent+'%'}}/></div><small>{goal.mode==='limit'?'Gasto':'Guardado'}: {money(goal.progress)} de {money(goal.amount)} · {goal.mode==='limit'?'Disponível':'Faltam'} {money(goal.remaining)}</small></div>):<div className="dashboard-widget-empty">Nenhuma meta cadastrada.</div>}</article>;
+  const chart=goalChart(widget.chart);
+  return <article {...common} className={common.className+' goal-report'}>
+   <div className="dashboard-box-heading">
+    <h3>{title}</h3>
+    <button type="button" className="textbutton" onClick={onGoals}>Abrir metas <ChevronRight size={16}/></button>
+   </div>
+   {data.goals.length>0?<>
+    <label className="goal-report-control">Gráfico
+     <select value={chart} onChange={event=>changeGoalChart(widget.id,goalChart(event.target.value as DashboardWidget['chart']))}>
+      {goalChartOptions.map(({value,label})=><option key={value} value={value}>{label}</option>)}
+     </select>
+    </label>
+    <div className="goal-report-list">{data.goals.map(goal=><GoalProgress key={goal.id} goal={goal} chart={chart}/>)}</div>
+   </>:<div className="dashboard-widget-empty">Nenhuma meta cadastrada.</div>}
+  </article>;
  }
  return <div className="analytics-dashboard clean-dashboard customizable-dashboard">
   {error&&<p className="alert" role="alert">{error}</p>}{syncState==='offline'&&<p className="analytics-sync-note">Offline · dados disponíveis neste aparelho.</p>}
