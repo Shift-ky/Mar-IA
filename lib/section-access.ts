@@ -1,3 +1,5 @@
+import {creditInstallment} from './credit-installments';
+
 export const APP_ACCESS_SECTIONS=[
  {key:'home',label:'Início'},
  {key:'finance',label:'Finanças'},
@@ -45,7 +47,7 @@ export function canAccessSections(permissions:any,keys:AppSectionKey[]){
 
 export function recordAllowedBySections(record:any,permissions:any){
  const allow=(key:AppSectionKey)=>sectionsFor(permissions)[key];
- const recurring=record.kind==='recurringBill'||record.kind==='recurringSkip'||record.kind==='transaction'&&(!!record.recurringId||record.category==='Contas fixas');
+ const recurring=record.kind==='recurringBill'||record.kind==='recurringSkip'||record.kind==='transaction'&&(!!record.recurringId||record.category==='Contas fixas'||!!creditInstallment(record));
  if(recurring)return record.kind==='transaction'?allow('finance')||allow('recurring'):allow('recurring');
  if(['transaction','card'].includes(record.kind))return allow('finance');
  if(['wallet','walletDeleted','walletMovement','walletTransfer'].includes(record.kind))return allow('wallets');

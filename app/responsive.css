@@ -376,6 +376,62 @@ video {
   }
 }
 
+/* Make each appearance option readable without horizontal overflow on phones. */
+@media (max-width: 560px) {
+  .theme-panel .theme-previews {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .theme-panel .theme-preview {
+    grid-template-columns: minmax(84px, 104px) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 4px 10px;
+    width: 100%;
+    padding: 9px;
+  }
+
+  .theme-panel .theme-preview .preview-mock {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    height: 64px;
+    padding: 8px;
+    gap: 5px;
+  }
+
+  .theme-panel .theme-preview > strong,
+  .theme-panel .theme-preview > small {
+    grid-column: 2;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .theme-panel .theme-preview > strong {
+    align-self: end;
+    line-height: 1.3;
+  }
+
+  .theme-panel .theme-preview > small {
+    align-self: start;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 360px) {
+  .theme-panel .theme-preview {
+    grid-template-columns: minmax(72px, 88px) minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 8px;
+  }
+
+  .theme-panel .theme-preview .preview-mock {
+    height: 58px;
+  }
+}
+
 @media (max-width: 350px) {
   .stats,
   .analytics-kpis,
@@ -723,3 +779,124 @@ html[data-theme] .sidebar nav button.active:not(.theme-preview):not(.mobile-nav-
 .wallet-grid .wallet-card { height:100%; }
 
 .dashboard-wallet-list .wallet-brl-equivalent { display:block; font-size:9px; font-weight:400; margin-top:3px; color:var(--muted); }
+
+/* Keep the dashboard customizer usable on tablets and phones. */
+@media (max-width: 900px) {
+  .dashboard-editor-widget {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-editor-widget > .dashboard-editor-label:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-custom-overlay {
+    align-items: stretch;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .dashboard-custom-dialog {
+    width: 100%;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    margin: auto 0;
+    padding: 14px;
+    border-radius: 14px;
+    overscroll-behavior: contain;
+  }
+
+  .dashboard-custom-dialog > .sectiontitle {
+    top: -14px;
+    gap: 8px;
+    margin-inline: -2px;
+    padding: 12px 2px 8px;
+  }
+
+  .dashboard-custom-dialog > .sectiontitle > div {
+    min-width: 0;
+  }
+
+  .dashboard-editor-sections {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .dashboard-editor-section {
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .dashboard-editor-section-head {
+    grid-template-columns: minmax(0, 1fr) 76px auto;
+    gap: 7px;
+  }
+
+  .dashboard-editor-widget {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .dashboard-editor-label,
+  .dashboard-editor-field {
+    min-width: 0;
+  }
+
+  .dashboard-editor-toolbar.compact {
+    justify-self: end;
+  }
+
+  .dashboard-editor-footer {
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+    padding: 10px 0 max(2px, env(safe-area-inset-bottom));
+  }
+
+  .dashboard-editor-footer > span {
+    display: none;
+  }
+
+  .dashboard-editor-footer > button {
+    flex: 1 1 calc(50% - 7px);
+    min-width: 0;
+    min-height: 40px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-custom-overlay {
+    padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+  }
+
+  .dashboard-custom-dialog {
+    height: calc(100dvh - 12px);
+    max-height: calc(100dvh - 12px);
+    padding: 11px;
+  }
+
+  .dashboard-editor-section-head {
+    grid-template-columns: minmax(0, 1fr) 68px auto;
+    gap: 6px;
+  }
+
+  .dashboard-editor-widget {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-editor-widget > .dashboard-editor-label:first-child {
+    grid-column: auto;
+  }
+
+  .dashboard-editor-footer > button {
+    padding-inline: 6px;
+    font-size: 9px;
+  }
+}
+
+.wallet-transfer-history { margin-top: 24px; }
+.wallet-transfer-history > summary { cursor: pointer; font-size: 1.125rem; font-weight: 700; }
+.wallet-transfer-history-content { margin-top: 16px; }

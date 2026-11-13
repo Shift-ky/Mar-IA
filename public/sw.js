@@ -1,5 +1,5 @@
 /* Generated with the application assets: no network bootstrap is needed on restart. */
-const PRECACHE = {"version":"bca1c78ef66f","release":"2.31","files":["/offline/","/offline/assets/index--L5KJL2Z.css","/offline/assets/index-B2B4qCwn.js","/manifest.webmanifest","/brand/mar-app-icon.png","/brand/mar-symbol.png","/brand/waves.svg","/fonts/Montserrat-300.woff","/fonts/Montserrat-400.woff","/fonts/Montserrat-500.woff","/fonts/Montserrat-600.woff","/fonts/Montserrat-700.woff","/fonts/Montserrat-800.woff"]};
+const PRECACHE = {"version":"d70b3599493f","release":"2.34","files":["/offline/","/offline/assets/index-DJnyldfc.css","/offline/assets/index-tDIy_6dE.js","/manifest.webmanifest","/brand/mar-app-icon.png","/brand/mar-symbol.png","/brand/waves.svg","/fonts/Montserrat-300.woff","/fonts/Montserrat-400.woff","/fonts/Montserrat-500.woff","/fonts/Montserrat-600.woff","/fonts/Montserrat-700.woff","/fonts/Montserrat-800.woff"]};
 const CACHE = 'mar-shell-v2-' + PRECACHE.version;
 const SHELL = '/offline/';
 // Authentication pages must always reach the server, never the offline app shell.

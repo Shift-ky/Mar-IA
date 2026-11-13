@@ -1,12 +1,17 @@
-import {walletBalances,walletNames,walletsForPanel} from './wallets';
+import {walletBalances,walletDefinition,walletsForDisplay,walletsForPanel} from './wallets';
 import {recurringOccurrences} from './recurring';
 import {buildAnalytics,previousMonth} from './analytics';
 const cents=(v:any)=>Math.round(Number(v||0)*100);
 const total=(rows:any[])=>rows.reduce((n,r)=>n+cents(r.amount),0)/100;
-export function dashboardSummary(records:any[],month:string,today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'})){
+export function dashboardSummary(records:any[],month:string,today=new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'}),rates:Record<string,{rate:number;date?:string}>={}){
  const [y,m]=month.split('-').map(Number),start=month+'-01',end=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10),cutoff=today<end?today:end;
  const active=records.filter(r=>!r.voided),asOf=active.filter(r=>!r.date||r.date<=cutoff);
  const names=walletsForPanel(records),balances=walletBalances(asOf),balance=names.reduce((n,w)=>n+cents(balances[w]),0)/100;
+ const benefitsBalance=names.filter(name=>walletDefinition(records,name).type==='beneficio').reduce((sum,name)=>sum+cents(balances[name]),0)/100;
+ const cashBalance=(cents(balance)-cents(benefitsBalance))/100;
+ const currentBalances=walletBalances(active);
+ for(const name of Object.keys(balances))if(walletDefinition(records,name).type==='credito')balances[name]=currentBalances[name];
+ const creditBalance=walletsForDisplay(records).filter(name=>walletDefinition(records,name).type==='credito').reduce((sum,name)=>sum+cents(currentBalances[name]),0)/100;
  const confirmed=active.filter(r=>r.kind==='transaction'&&r.paid&&r.date>=start&&r.date<=cutoff);
  const expenses=confirmed.filter(r=>r.type==='expense'),income=confirmed.filter(r=>r.type==='income');
  const existing=new Set(active.map(r=>r.id)),skipped=new Set(active.filter(r=>r.kind==='recurringSkip').map(r=>r.transactionId));
@@ -23,6 +28,6 @@ export function dashboardSummary(records:any[],month:string,today=new Date().toL
  const projected=date===cutoff?balance:date>cutoff?(cents(balance)+incoming.filter(r=>r.date<=date).reduce((n,r)=>n+cents(r.amount),0)-outgoing.filter(r=>r.date<=date).reduce((n,r)=>n+cents(r.amount),0))/100:null;
  return {day:i+1,date,actual,projected};
  });
- const goals=buildAnalytics(asOf,month).goals;
- return {balances,balance,paidExpenses,received:total(income),expected,bills,forecast,categories,trend,goals,change,cutoff,end,hasData:active.some(r=>['transaction','walletMovement','walletTransfer'].includes(r.kind)),hasProjection:cutoff<end};
+ const goals=buildAnalytics(asOf,month,rates).goals;
+ return {balances,balance,cashBalance,benefitsBalance,creditBalance,paidExpenses,received:total(income),expected,bills,forecast,categories,trend,goals,change,cutoff,end,hasData:active.some(r=>['transaction','walletMovement','walletTransfer'].includes(r.kind)),hasProjection:cutoff<end};
 }

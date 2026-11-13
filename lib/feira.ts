@@ -1,7 +1,7 @@
 import {inventory,normalize} from './inventory';
-import {walletsForAutomation} from './wallets';
+import {walletsForAutomation,walletNames,walletDefinition,creditTransaction} from './wallets';
 export const feiraPayments=['Não lançar','Dinheiro','Alimentação','Refeição'] as const;
-export function feiraPaymentsFor(records:any[]){const names=walletsForAutomation(records,'feira').map(name=>name==='Vale-alimentação'?'Alimentação':name==='Vale-refeição'?'Refeição':name);return [...new Set(['Não lançar',...names])];}
+export function feiraPaymentsFor(records:any[]){const available=walletsForAutomation(records,'feira');if(walletNames(records).includes('Dinheiro')&&walletDefinition(records,'Dinheiro').currency==='BRL'&&!available.includes('Dinheiro'))available.unshift('Dinheiro');const names=available.map(name=>name==='Vale-alimentação'?'Alimentação':name==='Vale-refeição'?'Refeição':name);return [...new Set(['Não lançar',...names])];}
 const round=(v:number)=>Math.round(v*1000)/1000;
 const cents=(v:number)=>Math.round(v*100)/100;
 export const stockKinds=['product','productGroup','stockMovement','purchaseItem','feiraPurchase'];
@@ -34,7 +34,7 @@ export function feiraPlan(records:any[],b:any){
   let items:any[]=[],payment='Não lançar',date='',total=0;
   if(b.action==='feiraSave'){
    payment=b.data?.payment;date=String(b.data?.date||'');
-   if(!feiraPaymentsFor(records).includes(payment)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('Escolha uma carteira habilitada para a Feira e informe uma data válida.');
+   if((!(old&&payment===old.payment)&&!feiraPaymentsFor(records).includes(payment))||!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('Escolha uma carteira habilitada para a Feira e informe uma data válida.');
    if(!Array.isArray(b.data?.items)||!b.data.items.length||b.data.items.length>100)throw Error('Selecione de 1 a 100 itens.');
    items=b.data.items.map((raw:any,i:number)=>{const name=String(raw.name||'').trim(),quantity=Number(raw.quantity),unitPrice=Number(raw.unitPrice),unit=raw.unit;
     if(!name||name.length>100||!['un','kg','g','l','ml','pacote','caixa'].includes(unit)||!Number.isFinite(quantity)||quantity<=0||quantity>100000||!Number.isFinite(unitPrice)||unitPrice<0||unitPrice>1000000)throw Error('Confira nome, quantidade, unidade e preço de cada item.');
@@ -56,7 +56,9 @@ export function feiraPlan(records:any[],b:any){
    if(payment!=='Não lançar'){
     for(const item of items)remove.push('replenish-'+item.productId);
     const method=payment==='Alimentação'?'Vale-alimentação':payment==='Refeição'?'Vale-refeição':payment;
-    put('ft-'+id,'transaction',{name:'Feira · '+items.length+' item(ns)',date,amount:total,type:'expense',paid:true,category:'Supermercado',paymentMethod:method,purchaseId:id,source:'feira'});
+    const transaction={name:'Feira · '+items.length+' item(ns)',date,amount:total,type:'expense',paid:true,category:'Supermercado',paymentMethod:method,purchaseId:id,source:'feira'};
+    const prior=records.find(r=>r.id==='ft-'+id&&r.kind==='transaction');
+    put('ft-'+id,'transaction',creditTransaction(transaction,without,prior));
     items.forEach((r,i)=>{put('fm-'+id+'-'+i,'stockMovement',{name:'Compra: '+r.name,productId:r.productId,delta:r.quantity,date,purchaseId:id});put('fi-'+id+'-'+i,'purchaseItem',{...r,date,purchaseId:id,purchasedAt:saved.updatedAt});});
    }
   }

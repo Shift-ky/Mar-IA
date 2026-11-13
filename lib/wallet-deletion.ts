@@ -1,7 +1,8 @@
-import {walletNames,walletDefinition,walletAmount} from './wallets';
+import {walletNames,walletDefinition,walletAmount,transactionWallet} from './wallets';
 export function deleteWallet(records:any[],name:string,markerId:string,fxRate?:number){
  if(name==='Dinheiro')throw Error('A carteira Dinheiro não pode ser excluída.');
  if(!walletNames(records).includes(name))return records;
+ if(walletDefinition(records,name).type==='credito'&&records.some(r=>r.kind==='transaction'&&transactionWallet(r)===name))throw Error('Esta carteira de crédito tem lançamentos vinculados.');
  const currency=walletDefinition(records,name).currency;const rate=currency==='BRL'?1:Number(fxRate);if(!Number.isFinite(rate)||rate<=0)throw Error('Uma cotação válida é necessária para mover o saldo para Dinheiro.');
  const definition=records.find(r=>r.kind==='wallet'&&r.name===name);
  const result=records.filter(r=>!(r.kind==='wallet'&&r.name===name)).map(record=>{

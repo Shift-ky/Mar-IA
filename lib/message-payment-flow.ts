@@ -21,11 +21,11 @@ export async function messagePaymentFlow({db,event,a,records,text,candidate,fini
  if(/^(cancelar|cancelar lancamento)$/.test(answer)){await reply([],'Lançamento cancelado; nada foi registrado.',[{sql:'DELETE FROM settings WHERE key=? AND $GUARD',args:[key]}]);return true;}
  if(session.stage==='payment'){
   const method=paymentAnswer(String(text||''));if(!method){await reply([],'Não reconheci a forma de pagamento. Responda Dinheiro, Vale-alimentação, Vale-refeição, Combustível ou Pix. Envie CANCELAR para desistir.');return true;}
-  const next={...session,candidate:{...candidateData,paymentMethod:method},stage:'wallet',expires:Date.now()+86400000},wallets=walletNames(records).filter((name:string)=>walletDefinition(records,name).currency==='BRL');
+  const next={...session,candidate:{...candidateData,paymentMethod:method},stage:'wallet',expires:Date.now()+86400000},wallets=walletNames(records).filter((name:string)=>walletDefinition(records,name).currency==='BRL'&&walletDefinition(records,name).type!=='credito');
   await reply([],candidateData.type==='income'?'Em qual carteira entrou o dinheiro? Responda com uma destas: '+wallets.join(', ')+'.':'De qual carteira saiu o dinheiro? Responda com uma destas: '+wallets.join(', ')+'.',[{sql:'UPDATE settings SET value=? WHERE key=? AND $GUARD',args:[JSON.stringify(next),key]}]);return true;
  }
  if(session.stage==='wallet'){
-  const wallets=walletNames(records).filter((name:string)=>walletDefinition(records,name).currency==='BRL'),wallet=wallets.find((name:string)=>normalize(name).replace(/[\s-]+/g,'')===answer.replace(/[\s-]+/g,''));if(!wallet){await reply([],'Não reconheci essa carteira. Responda com uma destas: '+wallets.join(', ')+'.');return true;}
+  const wallets=walletNames(records).filter((name:string)=>walletDefinition(records,name).currency==='BRL'&&walletDefinition(records,name).type!=='credito'),wallet=wallets.find((name:string)=>normalize(name).replace(/[\s-]+/g,'')===answer.replace(/[\s-]+/g,''));if(!wallet){await reply([],'Não reconheci essa carteira. Responda com uma destas: '+wallets.join(', ')+'.');return true;}
   const next={...session,candidate:{...candidateData,wallet},stage:'confirm',expires:Date.now()+86400000},data=next.candidate;
   await reply([],(data.type==='income'?'Receita':'Despesa')+': '+money(Number(data.amount))+'\nDescrição: '+data.name+'\nData: '+String(data.date).split('-').reverse().join('/')+'\nForma de pagamento: '+data.paymentMethod+'\nCarteira: '+wallet+'\n\nResponda CONFIRMAR para registrar ou CANCELAR para desistir.',[{sql:'UPDATE settings SET value=? WHERE key=? AND $GUARD',args:[JSON.stringify(next),key]}]);return true;
  }

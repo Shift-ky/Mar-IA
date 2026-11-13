@@ -1,5 +1,5 @@
 import {normalize} from './inventory';
-import {validateWalletDefinition, walletNames, wallets} from './wallets';
+import {validateWalletDefinition, walletBalances, walletNames, wallets} from './wallets';
 
 const nameFields = ['paymentMethod', 'wallet', 'fromWallet', 'toWallet', 'sourcePocketWalletName'];
 
@@ -7,6 +7,13 @@ export function walletEditPlan(records: any[], id: string, raw: any, quotes: Rec
   const wallet = records.find(row => row.id === id && row.kind === 'wallet');
   if (!wallet) throw Error('Carteira não encontrada.');
   const data = {...validateWalletDefinition(raw), balanceRates: {...wallet.balanceRates}};
+  if ((data.type==='credito') !== (wallet.type==='credito')) {
+    throw Error('Crie uma nova carteira para mudar entre crédito e outros tipos.');
+  }
+  if (data.type==='credito') {
+    const used=Math.round((wallet.creditLimit-walletBalances(records)[wallet.name])*100);
+    if (Math.round(Number(data.creditLimit)*100)<used) throw Error('O limite deve cobrir as despesas pendentes.');
+  }
   const oldCurrency = wallet.currency || 'BRL';
   if (wallets.some(name => name === wallet.name) && (data.name !== wallet.name || data.currency !== oldCurrency)) {
     throw Error('O nome e a moeda das carteiras padrão são usados pelas regras do aplicativo.');

@@ -1,3 +1,4 @@
+import {goalProgress} from './goals';
 const cents=(value:any)=>Math.round(Number(value||0)*100);
 const monthKey=(year:number,month:number)=>`${year}-${String(month).padStart(2,'0')}`;
 
@@ -7,7 +8,7 @@ export function previousMonth(month:string){
  return monthKey(date.getUTCFullYear(),date.getUTCMonth()+1);
 }
 
-export function buildAnalytics(records:any[],month:string){
+export function buildAnalytics(records:any[],month:string,rates:Record<string,{rate:number;date?:string}>={}){
  const transactions=(records||[]).filter(r=>r.kind==='transaction'&&!r.voided&&/^\d{4}-\d{2}-\d{2}$/.test(r.date||''));
  const current=transactions.filter(r=>r.date.startsWith(month));
  const priorMonth=previousMonth(month),prior=transactions.filter(r=>r.date.startsWith(priorMonth));
@@ -40,9 +41,8 @@ export function buildAnalytics(records:any[],month:string){
    const target=cents(goal.amount);
    return {id:goal.id,name:goal.name,mode:'limit',amount:target/100,progress:spent/100,percent:target?Math.min(100,spent/target*100):0,remaining:Math.max(0,target-spent)/100,category:goal.category||null};
   }
-  const contributions=(records||[]).filter(r=>r.kind==='goalContribution'&&r.goalId===goal.id);
-  const accumulated=cents(goal.saved)+contributions.reduce((sum,r)=>sum+cents(r.amount),0),target=cents(goal.amount);
-  return {id:goal.id,name:goal.name,mode:'accumulation',amount:target/100,progress:accumulated/100,percent:target?Math.min(100,accumulated/target*100):0,remaining:Math.max(0,target-accumulated)/100,category:null};
+  const progress=goalProgress(goal,records,rates),target=cents(goal.amount);
+  return {id:goal.id,name:goal.name,mode:'accumulation',amount:target/100,progress:progress.accumulated,percent:progress.percent,remaining:progress.remaining,category:null};
  });
  const periodHasComparison=prior.length>0;
  return {current,prior,now:{income:now.income/100,expenses:now.expenses/100,economy:now.economy/100,purchases:now.purchases,count:now.count},before:{income:before.income/100,expenses:before.expenses/100,economy:before.economy/100,purchases:before.purchases,count:before.count},priorMonth,periodHasComparison,categories,trend,purchases,purchaseItems,goals};
