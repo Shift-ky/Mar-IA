@@ -130,12 +130,19 @@ export default function AnalyticsDashboard({snapshot,month,onMonthChange,onGoals
   <div className="analytics-heading"><div className="analytics-heading-copy"><p className="eyebrow">VISÃO FINANCEIRA</p><h2>{active?.name||'Painel principal'}</h2><p className="muted">Escolha as informações e a organização que fazem sentido para você.</p></div>{preferences.views.length>1&&<div className="dashboard-header-controls"><div className="dashboard-heading-actions"><label className="dashboard-view-select">Painel<select aria-label="Painel atual" value={active?.id||''} onChange={e=>selectView(e.target.value)}>{preferences.views.map(view=><option key={view.id} value={view.id}>{view.name}</option>)}</select></label></div></div>}</div>
 
   <div className="dashboard-sections">{active?.sections.map((section,index)=>{
-   const spans=section.widgets.map(widget=>Math.min(widget.width,section.columns));
-   const starts=gridStarts(spans,section.columns);
+   const hasThreeAndOne=section.widgets.some((widget,i)=>{
+    const next=section.widgets[i+1];
+    return next&&widget.width+next.width===4&&Math.max(widget.width,next.width)===3;
+   });
+   const columns=hasThreeAndOne?4:section.columns;
+   const spans=section.widgets.map(widget=>Math.min(widget.width,columns));
+   const starts=gridStarts(spans,columns);
+   let row=0;
+   const rows=starts.map(start=>start===1?++row:row);
    return <section className="dashboard-section" key={section.id} style={{'--section-span':section.columns,'--section-start':sectionStarts[index]} as CSSProperties}>
     <div className="dashboard-section-title"><h3>{section.name}</h3></div>
-    <div className="dashboard-section-grid" style={{'--section-columns':section.columns,minHeight:section.widgets.length?section.height:undefined} as CSSProperties}>
-     {section.widgets.map((widget,widgetIndex)=><div className="dashboard-widget-wrap" key={widget.id} style={{gridColumn:`${starts[widgetIndex]} / span ${spans[widgetIndex]}`}}>{renderWidget(widget)}</div>)}
+    <div className="dashboard-section-grid" style={{'--section-columns':columns,minHeight:section.widgets.length?section.height:undefined} as CSSProperties}>
+     {section.widgets.map((widget,widgetIndex)=><div className="dashboard-widget-wrap" key={widget.id} style={{gridRow:rows[widgetIndex],gridColumn:`${starts[widgetIndex]} / span ${spans[widgetIndex]}`}}>{renderWidget(widget)}</div>)}
     </div>
    </section>;
   })}</div>
