@@ -5,7 +5,7 @@ import {CalendarDays,Wallet,ArrowUpRight,TrendingUp,ChevronRight} from 'lucide-r
 import {Area,Bar,BarChart,CartesianGrid,Cell,ComposedChart,Line,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {dashboardSummary} from '../lib/dashboard-summary';
 import {walletNames,walletsForDisplay,walletDefinition} from '../lib/wallets';
-import {goalChart,goalChartOptions,type DashboardPreferences,type DashboardWidget} from '../lib/dashboard-preferences';
+import {goalChart,type DashboardPreferences,type DashboardWidget} from '../lib/dashboard-preferences';
 const money=(v:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const labels:Record<string,string>={'Dinheiro':'Dinheiro','Vale-alimentação':'Alimentação','Vale-refeição':'Refeição','Combustível':'Combustível'};
 const chartColors=['#3b82f6','#f97316','#22c55e','#a855f7','#ef4444','#14b8a6','#eab308','#ec4899','#64748b','#06b6d4'];
@@ -74,11 +74,6 @@ export default function AnalyticsDashboard({snapshot,month,onMonthChange,onGoals
  const monthlyFlow=useMemo(()=>{const [y,m]=reference.split('-').map(Number);return Array.from({length:6},(_,index)=>{const d=new Date(y,m-1-(5-index),1),key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const rows=(snapshot?.records||[]).filter((r:any)=>r.kind==='transaction'&&r.paid&&!r.voided&&r.date?.startsWith(key));return {month:monthLabel(key),Entradas:rows.filter((r:any)=>r.type==='income').reduce((n:number,r:any)=>n+Number(r.amount||0),0),Saídas:rows.filter((r:any)=>r.type==='expense').reduce((n:number,r:any)=>n+Number(r.amount||0),0)};});},[snapshot?.records,reference]);
  if(!snapshot?.permissions?.view)return <section className="panel analytics-empty"><Wallet/><h2>Sem acesso aos dados da família</h2></section>;
  function selectView(id:string){onPreferencesChange({...preferences,activeId:id});}
- function changeGoalChart(id:string,chart:ReturnType<typeof goalChart>){
-  onPreferencesChange({...preferences,views:preferences.views.map(view=>view.id!==active?.id?view:{
-   ...view,sections:view.sections.map(section=>({...section,widgets:section.widgets.map(widget=>widget.id===id?{...widget,chart}:widget)})),
-  })});
- }
  function renderWidget(widget:DashboardWidget){
   const title=widget.title||'Caixa do painel';
   const balanceValues={cash:data.cashBalance,benefits:data.benefitsBalance,credit:data.creditBalance};
@@ -116,11 +111,6 @@ export default function AnalyticsDashboard({snapshot,month,onMonthChange,onGoals
     <button type="button" className="textbutton" onClick={onGoals}>Abrir metas <ChevronRight size={16}/></button>
    </div>
    {data.goals.length>0?<>
-    <label className="goal-report-control">Gráfico
-     <select value={chart} onChange={event=>changeGoalChart(widget.id,goalChart(event.target.value as DashboardWidget['chart']))}>
-      {goalChartOptions.map(({value,label})=><option key={value} value={value}>{label}</option>)}
-     </select>
-    </label>
     <div className="goal-report-list">{data.goals.map(goal=><GoalProgress key={goal.id} goal={goal} chart={chart}/>)}</div>
    </>:<div className="dashboard-widget-empty">Nenhuma meta cadastrada.</div>}
   </article>;
