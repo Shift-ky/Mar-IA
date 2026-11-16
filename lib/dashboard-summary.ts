@@ -1,5 +1,6 @@
 import {walletBalances,walletDefinition,walletsForDisplay,walletsForPanel} from './wallets';
 import {recurringOccurrences} from './recurring';
+import {savingsForecast} from './goals';
 import {buildAnalytics,previousMonth} from './analytics';
 const cents=(v:any)=>Math.round(Number(v||0)*100);
 const total=(rows:any[])=>rows.reduce((n,r)=>n+cents(r.amount),0)/100;
@@ -15,10 +16,13 @@ export function dashboardSummary(records:any[],month:string,today=new Date().toL
  const confirmed=active.filter(r=>r.kind==='transaction'&&r.paid&&r.date>=start&&r.date<=cutoff);
  const expenses=confirmed.filter(r=>r.type==='expense'),income=confirmed.filter(r=>r.type==='income');
  const existing=new Set(active.map(r=>r.id)),skipped=new Set(active.filter(r=>r.kind==='recurringSkip').map(r=>r.transactionId));
- const scheduled=active.filter(r=>r.kind==='recurringBill').flatMap(rule=>recurringOccurrences(rule,end)).filter(row=>row.kind==='transaction'&&row.data.date>cutoff&&!existing.has(row.id)&&!skipped.has(row.id)).map(row=>({...row.data,id:row.id,kind:row.kind,paid:false}));
+ const recordedOccurrences=new Set(active.filter(r=>r.kind==='transaction'&&r.recurringId).map(r=>r.recurringId+'|'+r.date));
+ const scheduled=active.filter(r=>r.kind==='recurringBill').flatMap(rule=>recurringOccurrences(rule,end)).filter(row=>row.kind==='transaction'&&row.data.date>=start&&!existing.has(row.id)&&!skipped.has(row.id)&&!recordedOccurrences.has(row.data.recurringId+'|'+row.data.date)).map(row=>({...row.data,id:row.id,kind:row.kind,paid:false}));
  const pending=[...active.filter(r=>r.kind==='transaction'&&(!r.paid||r.date>cutoff)&&r.date<=end),...scheduled];
  const incoming=pending.filter(r=>r.type==='income'),outgoing=pending.filter(r=>r.type==='expense');
  const expected=total(incoming),bills=total(outgoing),forecast=(cents(balance)+cents(expected)-cents(bills))/100;
+ const receivable=total(incoming.filter(r=>r.date>=start));
+ const closingForecast=savingsForecast(active,month,today).forecastSavings;
  const priorKey=previousMonth(month),prior=active.filter(r=>r.kind==='transaction'&&r.type==='expense'&&r.paid&&r.date?.startsWith(priorKey));
  const priorExpenses=total(prior),paidExpenses=total(expenses),change=priorExpenses?(paidExpenses-priorExpenses)/priorExpenses*100:null;
  const categories=Object.entries(expenses.reduce((map:any,r:any)=>{const key=r.category||'Outros';map[key]=(map[key]||0)+cents(r.amount);return map},{})).map(([name,value])=>({name,value:Number(value)/100})).sort((a,b)=>b.value-a.value);
@@ -29,5 +33,5 @@ export function dashboardSummary(records:any[],month:string,today=new Date().toL
  return {day:i+1,date,actual,projected};
  });
  const goals=buildAnalytics(asOf,month,rates).goals;
- return {balances,balance,cashBalance,benefitsBalance,creditBalance,paidExpenses,received:total(income),expected,bills,forecast,categories,trend,goals,change,cutoff,end,hasData:active.some(r=>['transaction','walletMovement','walletTransfer'].includes(r.kind)),hasProjection:cutoff<end};
+ return {balances,balance,cashBalance,benefitsBalance,creditBalance,paidExpenses,received:total(income),expected,receivable,bills,forecast,closingForecast,categories,trend,goals,change,cutoff,end,hasData:active.some(r=>['transaction','walletMovement','walletTransfer'].includes(r.kind)),hasProjection:cutoff<end};
 }

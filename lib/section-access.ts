@@ -4,6 +4,7 @@ export const APP_ACCESS_SECTIONS=[
  {key:'home',label:'Início'},
  {key:'finance',label:'Finanças'},
  {key:'recurring',label:'Contas fixas'},
+ {key:'agenda',label:'Agenda'},
  {key:'review',label:'Conferência'},
  {key:'feira',label:'Feira'},
  {key:'stock',label:'Estoque'},

@@ -1,3 +1,4 @@
+import {queueAgendaReminders,queueRepeatingAgendaReminders} from '../agenda';
 import {actor} from '../whatsapp/access';
 import {boundedBody,digest,verify} from '../whatsapp/crypto';
 import {parseCommand,summary,money} from '../whatsapp/commands';
@@ -221,8 +222,20 @@ export async function bridge(req:Request,env:Runtime){
  await db.prepare("INSERT INTO settings(key,value) VALUES('ev:last-seen',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(now()).run();
  await db.prepare("UPDATE ev_outbox SET state='needs_review',error='Envio interrompido; confirmação ausente.' WHERE state='sending' AND attempted<?").bind(new Date(Date.now()-300000).toISOString()).run();
  await processIncoming(env);
+ const agendaNow=Date.now();
+ await queueAgendaReminders(db,agendaNow);
+ await queueRepeatingAgendaReminders(db,agendaNow);
  const rows=await db.prepare("SELECT * FROM ev_outbox WHERE state='queued' LIMIT 10").all<any>(),messages=[];
- for(const row of rows.results){if(row.context){const a=JSON.parse(row.context);try{const current=await identity(env,a.sender,a.chat);if(current.user!==a.user||current.family!==a.family||a.permission&&!current.permissions[a.permission])throw Error();}catch{await db.prepare("UPDATE ev_outbox SET state='blocked' WHERE id=? AND state='queued'").bind(row.id).run();continue;}}
+ for(const row of rows.results){
+ if(row.id.startsWith('agenda:')){
+  const eventId=row.id.split(':')[1],lease=crypto.randomUUID();
+  const target="EXISTS (SELECT 1 FROM agenda_targets WHERE event_id=? AND chat=ev_outbox.chat)";
+  const claimed=await db.prepare(`UPDATE ev_outbox SET state=CASE WHEN ${target} THEN 'sending' ELSE 'blocked' END,lease=?,attempted=? WHERE id=? AND state='queued' RETURNING state,chat,body`)
+   .bind(eventId,lease,now(),row.id).first<{state:string;chat:string;body:string}>();
+  if(claimed?.state==='sending')messages.push({id:row.id,lease,chat:claimed.chat,text:claimed.body});
+  continue;
+ }
+ if(row.context){const a=JSON.parse(row.context);try{const current=await identity(env,a.sender,a.chat);if(current.user!==a.user||current.family!==a.family||a.permission&&!current.permissions[a.permission])throw Error();}catch{await db.prepare("UPDATE ev_outbox SET state='blocked' WHERE id=? AND state='queued'").bind(row.id).run();continue;}}
  const lease=crypto.randomUUID(),r=await db.prepare("UPDATE ev_outbox SET state='sending',lease=?,attempted=? WHERE id=? AND state='queued'").bind(lease,now(),row.id).run();if(r.meta.changes)messages.push({id:row.id,lease,chat:row.chat,text:row.body});}
  return json({messages});
 }
