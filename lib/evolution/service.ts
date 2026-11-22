@@ -1,7 +1,7 @@
 import {queueAgendaReminders,queueRepeatingAgendaReminders} from '../agenda';
 import {actor} from '../whatsapp/access';
 import {boundedBody,digest,verify} from '../whatsapp/crypto';
-import {parseCommand,summary,money} from '../whatsapp/commands';
+import {parseCommand,parseMoney,money} from '../whatsapp/commands';
 import {normalize,help} from './protocol';
 import {storeDocument,purgeDocuments} from './documents';
 import {financialReceipt} from '../telegram/financial-receipt';
@@ -81,6 +81,41 @@ async function handleEntrySession(env:Runtime,event:any,m:any,a:any,key:string,s
   ]);if(!result[3].meta.changes)throw Error('Conflito temporário de sincronização.');return true;
  }
  await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();return false;
+}
+async function handleGuidedExpenseSession(env:Runtime,event:any,m:any,a:any,key:string,session:any){
+ const db=env.DB!,text=String(m.text||'').trim(),answer=normalizeAnswer(text),prefix=m.group?'Maria, ':'';
+ if(session.user!==a.user||session.family!==a.family||session.sender!==m.sender||session.chat!==m.chat)return false;
+ if(!Number.isFinite(session.expires)||session.expires<Date.now()){await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'O cadastro da despesa expirou. Escolha a opção 5 para começar novamente.',a,'add');return true;}
+ if(/^(cancelar|cancelar lancamento)$/.test(answer)){await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Cadastro da despesa cancelado; nada foi registrado.',a,'add');return true;}
+ const candidate=session.candidate||{},extend=(changes:any,stage:string)=>({...session,candidate:{...candidate,...changes},stage,expires:Date.now()+86400000});
+ if(session.stage==='amount'){
+  let amount:number;try{amount=parseMoney(text)}catch{await reply(db,event,'Valor inválido. Informe o valor da despesa, por exemplo: 32,50. Envie CANCELAR para desistir.',a,'add');return true;}
+  const next=extend({amount},'payment'),options=paymentMethods.map((method,index)=>`[ ${index+1} ] - ${method}`).join('\n');await db.prepare('UPDATE settings SET value=? WHERE key=?').bind(JSON.stringify(next),key).run();await reply(db,event,'Informe a forma de pagamento:\n'+options+'\nResponda com o número ou o nome da opção.',a,'add');return true;
+ }
+ if(session.stage==='payment'){
+  const rawIndex=/^\d+$/.test(text)?Number(text):0,method=paymentAnswer(text)||(rawIndex>0?paymentMethods[rawIndex-1]:null);if(!method){const options=paymentMethods.map((name,index)=>`[ ${index+1} ] - ${name}`).join('\n');await reply(db,event,'Não reconheci a forma de pagamento. Escolha uma opção:\n'+options,a,'add');return true;}
+  await db.prepare('UPDATE settings SET value=? WHERE key=?').bind(JSON.stringify(extend({paymentMethod:method},'description')),key).run();await reply(db,event,'Agora informe a descrição da despesa. Exemplo: supermercado.',a,'add');return true;
+ }
+ if(session.stage==='description'){
+  if(!text||text.length>120){await reply(db,event,'Informe uma descrição de até 120 caracteres.',a,'add');return true;}
+  const wallets=await receiptWallets(db,a.family),next=extend({name:text,category:'Outros',date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'}),type:'expense',paid:true,source:'whatsapp',wallets},'wallet');await db.prepare('UPDATE settings SET value=? WHERE key=?').bind(JSON.stringify(next),key).run();await reply(db,event,'De qual carteira saiu o valor?\n'+balanceWalletOptions(wallets)+'\nResponda com o número ou o nome da carteira.',a,'add');return true;
+ }
+ if(session.stage==='wallet'){
+  const wallets=Array.isArray(session.wallets)?session.wallets:[],rawIndex=/^\(?\s*(\d+)\s*\)?$/.exec(text),index=Number(rawIndex?.[1]||0),wallet=wallets[index-1]||wallets.find((name:string)=>normalizeAnswer(name).replace(/[\s-]+/g,'')===answer.replace(/[\s-]+/g,''));if(!wallet){await reply(db,event,'Não reconheci essa carteira. Escolha uma opção:\n'+balanceWalletOptions(wallets),a,'add');return true;}
+  const next=extend({wallet},'confirm'),confirmation='Despesa: '+money(candidate.amount)+'\nDescrição: '+candidate.name+'\nData: '+String(candidate.date).split('-').reverse().join('/')+'\nForma de pagamento: '+candidate.paymentMethod+'\nCarteira: '+wallet+'\nSituação: Pago\n\nResponda '+prefix+'CONFIRMAR para registrar ou '+prefix+'CANCELAR para desistir.';await db.prepare('UPDATE settings SET value=? WHERE key=?').bind(JSON.stringify(next),key).run();await reply(db,event,confirmation,a,'add');return true;
+ }
+ if(session.stage==='confirm'){
+  if(!/^(confirmar|confirmar lancamento)$/.test(answer)){await reply(db,event,'Confira a despesa e responda '+prefix+'CONFIRMAR para registrar ou '+prefix+'CANCELAR para desistir.',a,'add');return true;}
+  if(!a.permissions.add){await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Sem permissão para registrar esta despesa.',a);return true;}
+  const g=guard(a,'add'),recordId='ev-tx-'+session.id,record={name:candidate.name,type:'expense',amount:candidate.amount,date:candidate.date,paid:true,category:'Outros',paymentMethod:candidate.paymentMethod,wallet:candidate.wallet,source:'whatsapp',provider:'evolution'};
+  const result=await db.batch([
+   db.prepare(`INSERT OR IGNORE INTO records(id,family,kind,data,author) SELECT ?,?,'transaction',?,? WHERE ${g.sql}`).bind(recordId,a.family,JSON.stringify(record),a.email,...g.args),
+   db.prepare('DELETE FROM settings WHERE key=?').bind(key),
+   db.prepare(`INSERT OR IGNORE INTO ev_outbox(id,chat,body,context,state) SELECT ?,?,?,?,'queued' WHERE EXISTS (SELECT 1 FROM records WHERE id=? AND family=?) AND ${g.sql}`).bind('reply:'+event.id,m.chat,'Despesa registrada: '+record.name+' · '+money(Number(record.amount))+' · carteira '+record.wallet,JSON.stringify({...a,permission:'add'}),recordId,a.family,...g.args),
+   db.prepare("UPDATE ev_inbox SET state='done' WHERE id=? AND EXISTS (SELECT 1 FROM records WHERE id=? AND family=?)").bind(event.id,recordId,a.family)
+  ]);if(!result[3].meta.changes)throw Error('Conflito temporário de sincronização.');return true;
+ }
+ return false;
 }
 async function handleReceiptSession(env:Runtime,event:any,m:any,a:any,key:string,session:any){
  const db=env.DB!,text=String(m.text||'').trim(),answer=normalizeAnswer(text);
@@ -169,11 +204,12 @@ async function processOne(env:Runtime,event:any){
   await db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,JSON.stringify(session)).run();
   await reply(db,event,'Comprovante recebido.\nIdentifiquei '+(candidate.type==='income'?'receita':'despesa')+' de '+money(Number(candidate.total))+' em '+String(candidate.date).split('-').reverse().join('/')+'.\nQual foi a forma de pagamento? Responda '+(m.group?'Maria, ':'')+'Pix, Dinheiro, Vale-alimentação, Vale-refeição ou Combustível. Depois perguntarei a carteira usada e enviarei o resumo para confirmar.',a,'add');return;
  }
- const command=parseCommand(m.text);\n if(command.action==='menu'){await reply(db,event,help,a);return;}\n const receiptKey='ev:receipt:'+await digest(a.family+':'+m.sender+':'+m.chat),active=await db.prepare('SELECT value FROM settings WHERE key=?').bind(receiptKey).first<any>();if(active){let session:any;try{session=JSON.parse(active.value)}catch{session=null}if(session&&await handleReceiptSession(env,event,m,a,receiptKey,session))return;}
- const entryKey='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),entryFlow=await db.prepare('SELECT value FROM settings WHERE key=?').bind(entryKey).first<any>();if(entryFlow){let session:any;try{session=JSON.parse(entryFlow.value)}catch{session=null}if(session&&await handleEntrySession(env,event,m,a,entryKey,session))return;}
+ const command=parseCommand(m.text);
+ if(command.action==='menu'){await reply(db,event,help,a);return;}
+ const receiptKey='ev:receipt:'+await digest(a.family+':'+m.sender+':'+m.chat),active=await db.prepare('SELECT value FROM settings WHERE key=?').bind(receiptKey).first<any>();if(active){let session:any;try{session=JSON.parse(active.value)}catch{session=null}if(session&&await handleReceiptSession(env,event,m,a,receiptKey,session))return;}
+ const entryKey='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),entryFlow=await db.prepare('SELECT value FROM settings WHERE key=?').bind(entryKey).first<any>();if(entryFlow){let session:any;try{session=JSON.parse(entryFlow.value)}catch{session=null}if(session?.flow==='menuExpense'&&await handleGuidedExpenseSession(env,event,m,a,entryKey,session))return;if(session&&await handleEntrySession(env,event,m,a,entryKey,session))return;}
  const balanceKey='ev:balance-choice:'+await digest(a.family+':'+m.sender+':'+m.chat),balanceFlow=await db.prepare('SELECT value FROM settings WHERE key=?').bind(balanceKey).first<any>();
  if(balanceFlow){let balanceSession:any;try{balanceSession=JSON.parse(balanceFlow.value)}catch{balanceSession=null}if(balanceSession&&await handleBalanceSession(env,event,m,a,balanceKey,balanceSession))return;}
-
  if(command.action==='transaction'){
   if(!a.permissions.add)throw Error('Sem permissão para adicionar lançamentos.');
   const key='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),wallets=await receiptWallets(db,a.family),session={id:await digest(event.id),family:a.family,user:a.user,sender:m.sender,chat:m.chat,candidate:{...command.data},stage:'wallet',expires:Date.now()+86400000};
@@ -200,7 +236,10 @@ async function processOne(env:Runtime,event:any){
   const text=(()=>{const month=command.month||new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'}).slice(0,7),data=dashboardSummary(records,month),label=new Date(month+'-01T12:00:00-03:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});if(command.action==='movements'){if(!data.categories.length)return `Não há gastos pagos por categoria em ${label}.`;const rows=data.categories.map((category:any)=>({label:category.name,value:money(category.value)}));return `💸 *Gastos por categoria — ${label}*\n\n${rows.map((row:any)=>`${row.value} — ${row.label}`).join('\n')}\n\n*Total de saídas pagas: ${money(data.paidExpenses)}*`;}return `📊 *Relatório mensal — ${label}*\n\n💰 *Entrada do mês*\n${money(data.received)}\n\n💸 *Saídas pagas*\n${money(data.paidExpenses)}\n\n🧾 *Contas pendentes*\n${money(data.bills)}\n\n📈 *Previsão de fechamento*\n${money(data.closingForecast)}`;})();
   await reply(db,event,'Família: '+a.familyName+'\n'+text,a,'view');return;
  }
- if(command.action==='menuExpense'){await reply(db,event,'Para registrar uma despesa, envie: despesa 32,50 supermercado. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuIncome'){await reply(db,event,'Para registrar uma receita, envie: receita 1500 salário. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuReceipt'){await reply(db,event,'Envie uma foto ou PDF do comprovante. Vou pedir a forma de pagamento e a carteira antes de solicitar a confirmação.',a);return;}\n await reply(db,event,help,a);
+ if(command.action==='menuExpense'){if(!a.permissions.add)throw Error('Sem permissão para registrar despesas.');const key='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),session={id:await digest(event.id),flow:'menuExpense',stage:'amount',family:a.family,user:a.user,sender:m.sender,chat:m.chat,candidate:{},expires:Date.now()+86400000};await db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,JSON.stringify(session)).run();await reply(db,event,'Informe o valor da despesa. Exemplo: 32,50. Envie CANCELAR para desistir.',a,'add');return;}
+ if(command.action==='menuIncome'){await reply(db,event,'Para registrar uma receita, envie: receita 1500 salário. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}
+ if(command.action==='menuReceipt'){await reply(db,event,'Envie uma foto ou PDF do comprovante. Vou pedir a forma de pagamento e a carteira antes de solicitar a confirmação.',a);return;}
+ await reply(db,event,help,a);
  }catch(e:any){if(/Conflito temporário/.test(e.message)){await db.prepare('UPDATE ev_inbox SET error=? WHERE id=?').bind('Conflito; nova tentativa no próximo ciclo.',event.id).run();return;}await reply(db,event,e.message?.startsWith('Sem permissão')?e.message:'Não foi possível atender. Confira seu vínculo e suas permissões na aba WhatsApp.');}
 }
 export async function processIncoming(env:Runtime){const rows=await env.DB!.prepare("SELECT * FROM ev_inbox WHERE state='queued' ORDER BY created LIMIT 10").all<any>();for(const row of rows.results)await processOne(env,row);}
@@ -241,3 +280,4 @@ export async function bridge(req:Request,env:Runtime){
  const lease=crypto.randomUUID(),r=await db.prepare("UPDATE ev_outbox SET state='sending',lease=?,attempted=? WHERE id=? AND state='queued'").bind(lease,now(),row.id).run();if(r.meta.changes)messages.push({id:row.id,lease,chat:row.chat,text:row.body});}
  return json({messages});
 }
+
