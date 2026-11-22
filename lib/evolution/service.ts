@@ -8,6 +8,7 @@ import {financialReceipt} from '../telegram/financial-receipt';
 import {paymentMethods,paymentAnswer} from '../payment-methods';
 import {walletBalances,walletNames,walletDefinition} from '../wallets';
 import {feiraList} from '../feira';
+import {formatShoppingListItem} from '../shopping-list-format';
 type Runtime=Cloudflare.Env;
 const json=(v:any,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 const now=()=>new Date().toISOString();
@@ -189,7 +190,7 @@ async function processOne(env:Runtime,event:any){
  if(command.action==='feira'){
   if(!a.permissions.view)throw Error('Sem permissão para consultar a lista da Feira.');
   const rows=await db.prepare('SELECT * FROM records WHERE family=?').bind(a.family).all<any>(),records=rows.results.map((r:any)=>({...JSON.parse(r.data),id:r.id,kind:r.kind})),items=feiraList(records).filter((item:any)=>!item.bought);
-  const text=items.length?'Lista da Feira\n'+items.map((item:any,index:number)=>`${index+1}. ${item.name} — ${Number(item.quantity).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${item.unit}`).join('\n'):'A lista da Feira está vazia. Cadastre itens avulsos ou confira os produtos do Estoque.';
+  const text=items.length?'Lista da Feira\n```\n'+items.map((item:any)=>formatShoppingListItem(item.name,Number(item.quantity),item.unit)).join('\n')+'\n```':'A lista da Feira está vazia. Cadastre itens avulsos ou confira os produtos do Estoque.';
   await reply(db,event,text,a,'view');return;
  }
  if(['report','movements'].includes(command.action)){
