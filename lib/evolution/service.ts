@@ -168,11 +168,11 @@ async function processOne(env:Runtime,event:any){
   await db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,JSON.stringify(session)).run();
   await reply(db,event,'Comprovante recebido.\nIdentifiquei '+(candidate.type==='income'?'receita':'despesa')+' de '+money(Number(candidate.total))+' em '+String(candidate.date).split('-').reverse().join('/')+'.\nQual foi a forma de pagamento? Responda '+(m.group?'Maria, ':'')+'Pix, Dinheiro, Vale-alimentação, Vale-refeição ou Combustível. Depois perguntarei a carteira usada e enviarei o resumo para confirmar.',a,'add');return;
  }
- const receiptKey='ev:receipt:'+await digest(a.family+':'+m.sender+':'+m.chat),active=await db.prepare('SELECT value FROM settings WHERE key=?').bind(receiptKey).first<any>();if(active){let session:any;try{session=JSON.parse(active.value)}catch{session=null}if(session&&await handleReceiptSession(env,event,m,a,receiptKey,session))return;}
+ const command=parseCommand(m.text);\n if(command.action==='menu'){await reply(db,event,help,a);return;}\n const receiptKey='ev:receipt:'+await digest(a.family+':'+m.sender+':'+m.chat),active=await db.prepare('SELECT value FROM settings WHERE key=?').bind(receiptKey).first<any>();if(active){let session:any;try{session=JSON.parse(active.value)}catch{session=null}if(session&&await handleReceiptSession(env,event,m,a,receiptKey,session))return;}
  const entryKey='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),entryFlow=await db.prepare('SELECT value FROM settings WHERE key=?').bind(entryKey).first<any>();if(entryFlow){let session:any;try{session=JSON.parse(entryFlow.value)}catch{session=null}if(session&&await handleEntrySession(env,event,m,a,entryKey,session))return;}
  const balanceKey='ev:balance-choice:'+await digest(a.family+':'+m.sender+':'+m.chat),balanceFlow=await db.prepare('SELECT value FROM settings WHERE key=?').bind(balanceKey).first<any>();
  if(balanceFlow){let balanceSession:any;try{balanceSession=JSON.parse(balanceFlow.value)}catch{balanceSession=null}if(balanceSession&&await handleBalanceSession(env,event,m,a,balanceKey,balanceSession))return;}
- const command=parseCommand(m.text);
+
  if(command.action==='transaction'){
   if(!a.permissions.add)throw Error('Sem permissão para adicionar lançamentos.');
   const key='ev:entry-payment:'+await digest(a.family+':'+m.sender+':'+m.chat),wallets=await receiptWallets(db,a.family),session={id:await digest(event.id),family:a.family,user:a.user,sender:m.sender,chat:m.chat,candidate:{...command.data},stage:'wallet',expires:Date.now()+86400000};
