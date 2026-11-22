@@ -199,7 +199,7 @@ async function processOne(env:Runtime,event:any){
   const text=command.action==='movements'?records.filter((r:any)=>r.kind==='transaction').sort((x:any,y:any)=>y.date.localeCompare(x.date)).slice(0,10).map((r:any)=>r.date+' · '+r.name+' · '+money(r.amount)).join('\n')||'Nenhuma movimentação.':summary(records,command.month);
   await reply(db,event,'Família: '+a.familyName+'\n'+text,a,'view');return;
  }
- await reply(db,event,help,a);
+ if(command.action==='menuExpense'){await reply(db,event,'Para registrar uma despesa, envie: despesa 32,50 supermercado. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuIncome'){await reply(db,event,'Para registrar uma receita, envie: receita 1500 salário. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuReceipt'){await reply(db,event,'Envie uma foto ou PDF do comprovante. Vou pedir a forma de pagamento e a carteira antes de solicitar a confirmação.',a);return;}\n await reply(db,event,help,a);
  }catch(e:any){if(/Conflito temporário/.test(e.message)){await db.prepare('UPDATE ev_inbox SET error=? WHERE id=?').bind('Conflito; nova tentativa no próximo ciclo.',event.id).run();return;}await reply(db,event,e.message?.startsWith('Sem permissão')?e.message:'Não foi possível atender. Confira seu vínculo e suas permissões na aba WhatsApp.');}
 }
 export async function processIncoming(env:Runtime){const rows=await env.DB!.prepare("SELECT * FROM ev_inbox WHERE state='queued' ORDER BY created LIMIT 10").all<any>();for(const row of rows.results)await processOne(env,row);}
