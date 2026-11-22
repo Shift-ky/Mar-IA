@@ -4,5 +4,8 @@
   "type": "module",
   "dependencies": {
     "tesseract.js": "7.0.0"
+  },
+  "overrides": {
+    "wasm-feature-detect": "1.9.0"
   }
 }
