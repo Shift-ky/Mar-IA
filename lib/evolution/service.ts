@@ -9,6 +9,7 @@ import {paymentMethods,paymentAnswer} from '../payment-methods';
 import {walletBalances,walletNames,walletDefinition} from '../wallets';
 import {feiraList} from '../feira';
 import {formatShoppingListItem} from '../shopping-list-format';
+import {dashboardSummary} from '../dashboard-summary';
 type Runtime=Cloudflare.Env;
 const json=(v:any,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 const now=()=>new Date().toISOString();
@@ -196,7 +197,7 @@ async function processOne(env:Runtime,event:any){
  if(['report','movements'].includes(command.action)){
   if(!a.permissions.view)throw Error('Sem permissão para consultar registros.');
   const rows=await db.prepare('SELECT * FROM records WHERE family=?').bind(a.family).all<any>(),records=rows.results.map((r:any)=>({...JSON.parse(r.data),id:r.id,kind:r.kind}));
-  const text=command.action==='movements'?records.filter((r:any)=>r.kind==='transaction').sort((x:any,y:any)=>y.date.localeCompare(x.date)).slice(0,10).map((r:any)=>r.date+' · '+r.name+' · '+money(r.amount)).join('\n')||'Nenhuma movimentação.':summary(records,command.month);
+  const text=command.action==='movements'?records.filter((r:any)=>r.kind==='transaction').sort((x:any,y:any)=>y.date.localeCompare(x.date)).slice(0,10).map((r:any)=>r.date+' · '+r.name+' · '+money(r.amount)).join('\n')||'Nenhuma movimentação.':(()=>{const month=command.month||new Date().toLocaleDateString('en-CA',{timeZone:'America/Fortaleza'}).slice(0,7),data=dashboardSummary(records,month),label=new Date(month+'-01T12:00:00-03:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});return `📊 *Relatório mensal — ${label}*\n\n💰 *Entrada do mês*\n${money(data.received)}\n\n💸 *Saídas pagas*\n${money(data.paidExpenses)}\n\n🧾 *Contas pendentes*\n${money(data.bills)}\n\n📈 *Previsão de fechamento*\n${money(data.closingForecast)}`;})();
   await reply(db,event,'Família: '+a.familyName+'\n'+text,a,'view');return;
  }
  if(command.action==='menuExpense'){await reply(db,event,'Para registrar uma despesa, envie: despesa 32,50 supermercado. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuIncome'){await reply(db,event,'Para registrar uma receita, envie: receita 1500 salário. Depois escolha a forma de pagamento e a carteira e confirme.',a);return;}\n if(command.action==='menuReceipt'){await reply(db,event,'Envie uma foto ou PDF do comprovante. Vou pedir a forma de pagamento e a carteira antes de solicitar a confirmação.',a);return;}\n await reply(db,event,help,a);
