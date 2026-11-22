@@ -5,6 +5,9 @@ import {parseCommand,parseMoney,money} from '../whatsapp/commands';
 import {normalize,help} from './protocol';
 import {storeDocument,purgeDocuments} from './documents';
 import {financialReceipt} from '../telegram/financial-receipt';
+import {familyRecords} from '../inventory';
+import {receiptPlan,validateReceipt} from '../whatsapp/receipts';
+import {stockAccess} from '../feira';
 import {paymentAnswer} from '../payment-methods';
 import {walletBalances,walletNames,walletDefinition} from '../wallets';
 import {feiraList,feiraPaymentsFor} from '../feira';
@@ -40,7 +43,8 @@ async function reply(db:D1Database,event:any,text:string,a:any=null,permission='
  ]);
 }
 const normalizeAnswer=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
-function confirmationSummary(receipt:any,wallet:string,group=false,includePaymentMethod=true){const prefix=group?'Maria, ':'';const paymentLine=includePaymentMethod?'\nForma de pagamento: '+receipt.paymentMethod:'';return (receipt.type==='income'?'Receita':'Despesa')+': '+money(receipt.total)+'\nDescrição: '+receipt.store+'\nData: '+receipt.date.split('-').reverse().join('/')+paymentLine+'\nCarteira: '+wallet+'\nSituação: '+(receipt.paid?'Pago / recebido':'Pendente')+'\n\nResponda '+prefix+'CONFIRMAR para registrar ou '+prefix+'CANCELAR para deixar o comprovante pendente.';}
+function validateDocumentReceipt(candidate:any,paymentMethod?:string,paid=true){const data={...candidate,...(paymentMethod?{paymentMethod}:{}),paid};return Array.isArray(candidate?.items)&&candidate.items.length?validateReceipt({...data,proof:false}):financialReceipt(data,!!paymentMethod);}
+function confirmationSummary(receipt:any,wallet:string,group=false,includePaymentMethod=true){const prefix=group?'Maria, ':'';const paymentLine=includePaymentMethod?'\nForma de pagamento: '+receipt.paymentMethod:'';const items=Array.isArray(receipt.items)&&receipt.items.length?'\nProdutos para o estoque:\n'+receipt.items.map((item:any)=>`${item.name} · ${item.quantity} ${item.unit}`).join('\n')+'\n':'';return (receipt.type==='income'?'Receita':'Despesa')+': '+money(receipt.total)+'\nDescrição: '+receipt.store+'\nData: '+receipt.date.split('-').reverse().join('/')+paymentLine+'\nCarteira: '+wallet+'\nSituação: '+(receipt.paid?'Pago / recebido':'Pendente')+items+'\nResponda '+prefix+'CONFIRMAR para registrar ou '+prefix+'CANCELAR para deixar o comprovante pendente.';}
 async function receiptWallets(db:D1Database,family:string){const rows=await db.prepare("SELECT kind,data FROM records WHERE family=? AND kind IN ('wallet','walletDeleted')").bind(family).all<any>(),records=rows.results.map((row:any)=>({...JSON.parse(row.data),kind:row.kind}));return walletNames(records).filter(name=>walletDefinition(records,name).currency==='BRL'&&walletDefinition(records,name).type!=='credito');}
 async function feiraPaymentOptions(db:D1Database,family:string){const rows=await db.prepare('SELECT * FROM records WHERE family=?').bind(family).all<any>(),records=rows.results.map((row:any)=>({...JSON.parse(row.data),id:row.id,kind:row.kind}));return feiraPaymentsFor(records).filter(name=>name!=='Não lançar');}
 function balanceWalletNames(records:any[]){return walletNames(records).filter(name=>{const wallet=walletDefinition(records,name);return wallet.currency==='BRL'&&wallet.showInFeira===true;});}
@@ -130,7 +134,7 @@ async function handleReceiptSession(env:Runtime,event:any,m:any,a:any,key:string
  const data=JSON.parse(doc.data||'{}'),candidate=data.receipt||data.draft;
  if(session.stage==='payment'){
   const method=paymentAnswer(text);if(!method){await reply(db,event,'Não reconheci a forma de pagamento. Responda com '+(m.group?'Maria, ':'')+'Pix, Dinheiro, Vale-alimentação, Vale-refeição ou Combustível.',a,'add');return true;}
-  let receipt:any;try{receipt=financialReceipt({...candidate,paymentMethod:method,paid:data.paid!==false},true)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo antes da confirmação.',a,'add');return true;}
+  let receipt:any;try{receipt=validateDocumentReceipt(candidate,method,data.paid!==false)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo antes da confirmação.',a,'add');return true;}
   const wallets=await receiptWallets(db,a.family),next={...session,stage:'wallet',paymentMethod:method,expires:Date.now()+86400000},updated={...data,draft:{...candidate,paymentMethod:method},paymentMethod:method,paid:receipt.paid,reason:'Informe a carteira e confira o resumo no WhatsApp antes de registrar.'};
   await db.batch([
    db.prepare("UPDATE ev_documents SET data=? WHERE id=? AND family=? AND user=? AND state='needs_review'").bind(JSON.stringify(updated),doc.id,a.family,a.user),
@@ -140,7 +144,7 @@ async function handleReceiptSession(env:Runtime,event:any,m:any,a:any,key:string
  }
  if(session.stage==='wallet'){
   const wallets=await receiptWallets(db,a.family),wallet=wallets.find(name=>normalizeAnswer(name).replace(/[\s-]+/g,'')===answer.replace(/[\s-]+/g,''));if(!wallet){await reply(db,event,'Não reconheci essa carteira. '+walletQuestion(candidate?.type||'expense',wallets,m.group),a,'add');return true;}
-  let receipt:any;try{receipt=financialReceipt({...candidate,paymentMethod:session.paymentMethod,paid:data.paid!==false},true)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo antes da confirmação.',a,'add');return true;}
+  let receipt:any;try{receipt=validateDocumentReceipt(candidate,session.paymentMethod,data.paid!==false)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo antes da confirmação.',a,'add');return true;}
   const next={...session,stage:'confirm',wallet,expires:Date.now()+86400000},updated={...data,draft:{...candidate,paymentMethod:session.paymentMethod,wallet},paymentMethod:session.paymentMethod,wallet,paid:receipt.paid,reason:'Confira valor, forma de pagamento e carteira no WhatsApp antes de registrar.'};
   await db.batch([
    db.prepare("UPDATE ev_documents SET data=? WHERE id=? AND family=? AND user=? AND state='needs_review'").bind(JSON.stringify(updated),doc.id,a.family,a.user),
@@ -151,16 +155,20 @@ async function handleReceiptSession(env:Runtime,event:any,m:any,a:any,key:string
  if(session.stage==='confirm'){
   if(!/^(confirmar|confirmar lancamento)$/.test(answer)){const prefix=m.group?'Maria, ':'';await reply(db,event,'Responda '+prefix+'CONFIRMAR para registrar com esses dados ou '+prefix+'CANCELAR para deixar o comprovante pendente.',a,'add');return true;}
  if(!a.permissions.add){await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Sem permissão para registrar este lançamento.',a);return true;}
-  let receipt:any;try{receipt=financialReceipt({...candidate,paymentMethod:session.paymentMethod,paid:data.paid!==false},true)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo.',a,'add');return true;}
-  const g=guard(a,'add'),recordId='receipt-tx-'+doc.id,record={name:receipt.store,type:receipt.type,amount:receipt.total,date:receipt.date,paid:receipt.paid,category:'Outros',paymentMethod:receipt.paymentMethod,wallet:session.wallet,receiptId:doc.id,source:'whatsapp',provider:'evolution'},saved={receipt:{...receipt,wallet:session.wallet},wallet:session.wallet,reason:'Conferido e registrado pelo WhatsApp.'},message='Comprovante registrado: '+(receipt.type==='income'?'Receita':'Despesa')+' de '+money(receipt.total)+' em '+receipt.date.split('-').reverse().join('/')+' · '+(receipt.paid?'pago':'pendente')+' via '+receipt.paymentMethod+' · carteira '+session.wallet+'.';
-  const result=await db.batch([
-   db.prepare(`INSERT OR IGNORE INTO records(id,family,kind,data,author) SELECT ?,?,'transaction',?,? WHERE EXISTS (SELECT 1 FROM ev_documents WHERE id=? AND family=? AND state='needs_review') AND ${g.sql}`).bind(recordId,a.family,JSON.stringify(record),a.email,doc.id,a.family,...g.args),
+  let receipt:any;try{receipt=validateDocumentReceipt(candidate,session.paymentMethod,data.paid!==false)}catch{await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'Os dados do comprovante precisam ser completados na aba WhatsApp do aplicativo.',a,'add');return true;}
+  const hasItems=receipt.items.length>0;
+  if(hasItems&&!stockAccess(a)){await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();await reply(db,event,'O cupom foi lido, mas sua conta não tem acesso para cadastrar os produtos no estoque. Peça ao administrador da família para liberar essa permissão.',a,'add');return true;}
+  const g=guard(a,'add'),recordId='receipt-tx-'+doc.id,plan=receiptPlan(receipt,hasItems?await familyRecords(db,a.family):[],doc.id,'whatsapp'),rows=plan.rows.map((row:any)=>row.kind==='transaction'?{...row,data:{...row.data,wallet:session.wallet,paymentMethod:receipt.paymentMethod,provider:'evolution'}}:row),saved={receipt:{...receipt,wallet:session.wallet},wallet:session.wallet,reason:'Conferido e registrado pelo WhatsApp.'},message=hasItems?`Cupom registrado: ${money(receipt.total)} · ${receipt.items.length} produtos adicionados ao estoque · carteira ${session.wallet}.`:'Comprovante registrado: '+(receipt.type==='income'?'Receita':'Despesa')+' de '+money(receipt.total)+' em '+receipt.date.split('-').reverse().join('/')+' · '+(receipt.paid?'pago':'pendente')+' via '+receipt.paymentMethod+' · carteira '+session.wallet+'.';
+  const operations=rows.map((row:any)=>db.prepare(`INSERT OR IGNORE INTO records(id,family,kind,data,author) SELECT ?,?,?,?,? WHERE EXISTS (SELECT 1 FROM ev_documents WHERE id=? AND family=? AND state='needs_review') AND ${g.sql}`).bind(row.id,a.family,row.kind,JSON.stringify(row.data),a.email,doc.id,a.family,...g.args));
+  for(const row of rows)if(row.kind==='stockMovement'&&Number(row.data?.delta)>0)operations.push(db.prepare("UPDATE records SET data=json_set(data,'$.minimum',round(coalesce(json_extract(data,'$.minimum'),0)+?,3)) WHERE id=? AND family=? AND kind='product' AND EXISTS (SELECT 1 FROM ev_documents WHERE id=? AND family=? AND state='needs_review')").bind(Number(row.data.delta),row.data.productId,a.family,doc.id,a.family));
+  operations.push(
    db.prepare("UPDATE ev_documents SET state='posted',data=? WHERE id=? AND family=? AND user=? AND state='needs_review' AND EXISTS (SELECT 1 FROM records WHERE id=? AND family=?)").bind(JSON.stringify(saved),doc.id,a.family,a.user,recordId,a.family),
    db.prepare('DELETE FROM settings WHERE key=? AND json_extract(value,\'$.documentId\')=?').bind(key,doc.id),
    db.prepare(`INSERT OR IGNORE INTO ev_outbox(id,chat,body,context,state) SELECT ?,?,?,?,'queued' WHERE EXISTS (SELECT 1 FROM ev_documents WHERE id=? AND family=? AND state='posted') AND ${g.sql}`).bind('reply:'+event.id,m.chat,message,JSON.stringify({...a,permission:'add'}),doc.id,a.family,...g.args),
    db.prepare("UPDATE ev_inbox SET state='done' WHERE id=? AND EXISTS (SELECT 1 FROM ev_documents WHERE id=? AND family=? AND state='posted')").bind(event.id,doc.id,a.family)
-  ]);
-  if(!result[4].meta.changes)throw Error('Conflito temporário de sincronização.');return true;
+  );
+  const result=await db.batch(operations);
+  if(!result[result.length-1]?.meta.changes)throw Error('Conflito temporário de sincronização.');return true;
  }
  await db.prepare('DELETE FROM settings WHERE key=?').bind(key).run();return false;
 }
@@ -196,7 +204,7 @@ async function processOne(env:Runtime,event:any){
   if(current&&current.expires>Date.now()){await reply(db,event,'Há outro comprovante aguardando confirmação neste chat. Responda '+(m.group?'Maria, ':'')+'CANCELAR ou conclua a confirmação anterior primeiro.',a,'add');return;}
   const data=JSON.parse(doc.data||'{}'),candidate=data.receipt||data.draft;
   if(!candidate||!Number.isFinite(Number(candidate.total))||!candidate.date||!['income','expense'].includes(candidate.type)){await reply(db,event,'O comprovante foi salvo em Pendências, mas não consegui identificar valor e data com segurança. Complete os dados na aba WhatsApp da Mar IA.',a,'add');return;}
-  try{financialReceipt({...candidate,paid:data.paid!==false})}catch{await reply(db,event,'O comprovante foi salvo em Pendências, mas os dados precisam ser completados na aba WhatsApp da Mar IA.',a,'add');return;}
+  try{validateDocumentReceipt(candidate,undefined,data.paid!==false)}catch{await reply(db,event,'O comprovante foi salvo em Pendências, mas os dados precisam ser completados na aba WhatsApp da Mar IA.',a,'add');return;}
   const session={documentId:doc.id,family:a.family,user:a.user,sender:m.sender,chat:m.chat,stage:'payment',paymentMethod:null,expires:Date.now()+86400000};
   await db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,JSON.stringify(session)).run();
   await reply(db,event,'Comprovante recebido.\nIdentifiquei '+(candidate.type==='income'?'receita':'despesa')+' de '+money(Number(candidate.total))+' em '+String(candidate.date).split('-').reverse().join('/')+'.\nQual foi a forma de pagamento? Responda '+(m.group?'Maria, ':'')+'Pix, Dinheiro, Vale-alimentação, Vale-refeição ou Combustível. Depois perguntarei a carteira usada e enviarei o resumo para confirmar.',a,'add');return;
